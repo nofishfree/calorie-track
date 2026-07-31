@@ -1,0 +1,354 @@
+.container {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: calc(var(--nav-height) + var(--safe-area-bottom) + 80px);
+  background-color: var(--bg-color);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background-color: var(--bg-color);
+  gap: 16px;
+}
+
+.dateBtn {
+  width: 36px;
+  height: 36px;
+  border: none;
+  background: none;
+  font-size: 24px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dateInfo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.dateText {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.dateFull {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.dashboard {
+  padding: 16px;
+  background-color: var(--bg-color);
+}
+
+.records {
+  flex: 1;
+  padding: 16px;
+  background-color: var(--bg-color);
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sectionTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+}
+
+.recordList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 30px 20px;
+  color: var(--text-tertiary);
+}
+
+.hint {
+  font-size: 12px;
+  margin-top: 8px;
+}
+
+.quickAddFloatingButton {
+  position: fixed;
+  right: 96px;
+  bottom: calc(var(--nav-height) + var(--safe-area-bottom) + 20px);
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 50%;
+  background-color: #ef4444;
+  color: white;
+  font-size: 16px;
+  font-weight: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+  z-index: 100;
+  transition: transform 0.2s, box-shadow 0.2s;
+  line-height: 1;
+}
+
+.quickAddFloatingButton:hover {
+  transform: scale(1.05);
+  box-shadow: 0 6px 16px rgba(239, 68, 68, 0.4);
+}
+
+.quickAddFloatingButton:active {
+  transform: scale(0.95);
+}
+
+.addButton {
+  position: fixed;
+  right: 20px;
+  bottom: calc(var(--nav-height) + var(--safe-area-bottom) + 20px);
+  width: 56px;
+  height: 56px;
+  border: none;
+  border-radius: 50%;
+  background-color: #10b981;
+  color: white;
+  font-size: 28px;
+  font-weight: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 100;
+  transition: transform 0.2s, box-shadow 0.2s;
+  line-height: 1;
+}
+
+.addButton:hover {
+  transform: scale(1.05);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+}
+
+.addButton:active {
+  transform: scale(0.95);
+}
+
+.editPopup {
+  padding-bottom: 20px;
+}
+
+.editPopupHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.editPopupTitle {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.editFoodName {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 16px;
+  padding: 12px;
+  background-color: var(--bg-color);
+  border-radius: 8px;
+}
+
+.timeSelector {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border-color);
+  margin-bottom: 8px;
+}
+
+.timeLabel {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.timeInput {
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-size: 16px;
+  color: var(--text-primary);
+  background-color: var(--bg-color);
+}
+
+.amountRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--border-color);
+  margin-bottom: 16px;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.preview {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.previewItem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12px;
+  background-color: var(--bg-color);
+  border-radius: 8px;
+}
+
+.previewItem span {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.previewItem strong {
+  font-size: 16px;
+  color: var(--text-primary);
+  margin-top: 4px;
+}
+
+.previewUnit {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.editFoodName::placeholder,
+.editFoodName input::placeholder {
+  color: var(--text-tertiary);
+  opacity: 0.5;
+}
+
+.previewItem input::placeholder {
+  color: var(--text-tertiary);
+  opacity: 0.5;
+}
+
+.previewInputWrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.planItemsList {
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 8px;
+}
+
+.planItemsTitle {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+}
+
+.planItemRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-color-light);
+}
+
+.planItemRow:last-child {
+  border-bottom: none;
+}
+
+.planItemName {
+  font-size: 14px;
+  color: var(--text-primary);
+  flex: 1;
+}
+
+.planItemQuantity {
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.hiddenDateInput {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.quickAddPopup {
+  padding-bottom: 20px;
+}
+
+.quickAddPopupHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.quickAddPopupTitle {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.quickAddForm {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.quickAddRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.quickAddLabel {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.quickAddUnit {
+  font-size: 14px;
+  color: var(--text-tertiary);
+  margin-left: 8px;
+}

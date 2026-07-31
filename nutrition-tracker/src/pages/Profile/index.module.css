@@ -1,0 +1,648 @@
+.container {
+  min-height: 100vh;
+  padding-bottom: calc(var(--nav-height) + var(--safe-area-bottom));
+  background-color: var(--bg-color);
+}
+
+.header {
+  padding: 16px;
+  background-color: var(--card-bg);
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.userBtn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 8px;
+}
+
+.avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background-color: var(--bg-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+}
+
+.userInfo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.userDetail {
+  display: flex;
+  flex-direction: column;
+}
+
+.email {
+  display: block;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.localTag {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.streak {
+  display: block;
+  font-size: 12px;
+  color: var(--accent-color);
+  margin-top: 2px;
+}
+
+.loginBtn {
+  padding: 8px 16px;
+  background-color: var(--accent-color);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.list {
+  margin-bottom: 8px;
+  background-color: var(--card-bg);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+[data-theme='dark'] .list {
+  background-color: #242424 !important;
+}
+
+[data-theme='dark'] .list > *,
+[data-theme='dark'] .list > * > *,
+[data-theme='dark'] .list > * > * > *,
+[data-theme='dark'] .list > * > * > * > *,
+[data-theme='dark'] .list > * > * > * > * > * {
+  background-color: #242424 !important;
+  background-image: none !important;
+  color: #ffffff !important;
+  border-color: #3d3d3d !important;
+}
+
+[data-theme='dark'] .list [class*='arrow'],
+[data-theme='dark'] .list [class*='extra'] {
+  color: #cccccc !important;
+}
+
+.logout {
+  color: var(--error-color);
+}
+
+.deleteAccount {
+  color: #ff4d4f;
+}
+
+[data-theme='dark'] .deleteAccount {
+  color: #ff7875 !important;
+}
+
+.themeValue {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.syncRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.onlineIcon,
+.offlineIcon {
+  font-size: 12px;
+}
+
+.popupTitle {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 20px;
+  color: var(--text-primary);
+}
+
+.goalForm {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.dailySection {
+  background-color: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 16px;
+  margin-top: 8px;
+}
+
+.dailyTitle {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--accent-color);
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+[data-theme='dark'] .dailySection {
+  background-color: #242424;
+  border-color: #3d3d3d;
+}
+
+[data-theme='dark'] .dailyTitle {
+  color: #ff8e8e;
+  border-color: #3d3d3d;
+}
+
+.formItem {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.formLabel {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.saveBtn {
+  width: 100%;
+  padding: 14px;
+  background-color: var(--accent-color);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  margin-top: 20px;
+  cursor: pointer;
+}
+
+.themeOptions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.themeOption {
+  padding: 14px;
+  background-color: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  font-size: 16px;
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: left;
+}
+
+.themeOption.active {
+  background-color: var(--accent-color);
+  color: white;
+  border-color: var(--accent-color);
+}
+
+.switchAccount {
+  color: var(--accent-color);
+}
+
+.changePassword {
+  color: var(--accent-color);
+}
+
+.passwordForm {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.passwordInput {
+  padding: 12px 16px;
+  background-color: var(--bg-color);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  font-size: 14px;
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.passwordInput:focus {
+  border-color: var(--accent-color);
+}
+
+.passwordInput::placeholder {
+  color: var(--text-tertiary);
+}
+
+[data-theme='dark'] .passwordInput {
+  background-color: #2d2d2d;
+  color: #ffffff;
+  border-color: #3d3d3d;
+}
+
+[data-theme='dark'] .passwordInput:focus {
+  border-color: #4096ff;
+}
+
+[data-theme='dark'] .passwordInput::placeholder {
+  color: #666666;
+}
+
+.accountsList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.accountItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px;
+  background-color: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.accountItem.currentAccount {
+  border-color: var(--accent-color);
+  background-color: rgba(0, 122, 255, 0.05);
+}
+
+.accountInfo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.accountAvatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background-color: var(--bg-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+}
+
+.accountDetail {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.accountEmail {
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.currentTag {
+  font-size: 12px;
+  color: var(--accent-color);
+}
+
+.removeBtn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  border-radius: 50%;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  font-size: 16px;
+}
+
+.removeBtn:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+  color: var(--error-color);
+}
+
+.addAccountBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px;
+  background-color: var(--card-bg);
+  border: 1px dashed var(--border-color);
+  border-radius: 8px;
+  font-size: 14px;
+  color: var(--accent-color);
+  cursor: pointer;
+}
+
+.addIcon {
+  font-size: 20px;
+  font-weight: 600;
+}
+
+[data-theme='dark'] .accountItem {
+  background-color: #242424;
+  border-color: #3d3d3d;
+}
+
+[data-theme='dark'] .accountItem.currentAccount {
+  background-color: rgba(0, 122, 255, 0.1);
+}
+
+[data-theme='dark'] .addAccountBtn {
+  background-color: #242424;
+  border-color: #3d3d3d;
+}
+
+[data-theme='dark'] .themeOption {
+  background-color: #242424;
+  border-color: #3d3d3d;
+  color: #ffffff;
+}
+
+[data-theme='dark'] .popupTitle {
+  color: #ffffff;
+}
+
+[data-theme='dark'] .formLabel {
+  color: #cccccc;
+}
+
+[data-theme='dark'] .accountEmail {
+  color: #ffffff;
+}
+
+[data-theme='dark'] .currentTag {
+  color: #4096ff;
+}
+
+[data-theme='dark'] .removeBtn {
+  color: #888888;
+}
+
+[data-theme='dark'] .removeBtn:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: #ff7875;
+}
+
+/* 深色模式下Popup背景 */
+[data-theme='dark'] :global(.adm-popup-body) {
+  background-color: #1a1a1a !important;
+}
+
+[data-theme='dark'] :global(.adm-popup-body .adm-list) {
+  background-color: #242424 !important;
+}
+
+[data-theme='dark'] :global(.adm-popup-body .adm-list-item) {
+  background-color: #242424 !important;
+}
+
+[data-theme='dark'] :global(.adm-popup-body .adm-list-item-content) {
+  background-color: #242424 !important;
+}
+
+[data-theme='dark'] :global(.adm-popup-body .adm-input) {
+  background-color: #2d2d2d !important;
+  color: #ffffff !important;
+}
+
+[data-theme='dark'] :global(.adm-popup-body .adm-input-element) {
+  color: #ffffff !important;
+}
+
+/* 操作队列相关样式 */
+.operationQueue {
+  color: var(--accent-color);
+}
+
+.addOperationBtn {
+  padding: 8px 16px;
+  background-color: var(--accent-color);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.operationsList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.operationItem {
+  background-color: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.operationHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.operationType {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.type_add {
+  background-color: rgba(72, 187, 120, 0.1);
+  color: #48bb78;
+}
+
+.type_update {
+  background-color: rgba(246, 173, 85, 0.1);
+  color: #f6ad55;
+}
+
+.type_delete {
+  background-color: rgba(245, 108, 108, 0.1);
+  color: #f56c6c;
+}
+
+.operationEntity {
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.operationId {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  font-family: monospace;
+  margin-left: auto;
+}
+
+.operationData {
+  font-size: 12px;
+  color: var(--text-secondary);
+  background-color: var(--bg-color);
+  padding: 8px;
+  border-radius: 4px;
+  overflow-x: auto;
+  max-height: 120px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.operationFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 8px;
+}
+
+.operationTime {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.operationActions {
+  display: flex;
+  gap: 8px;
+}
+
+.editBtn,
+.deleteBtn {
+  padding: 4px 12px;
+  border: none;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.editBtn {
+  background-color: rgba(0, 122, 255, 0.1);
+  color: var(--accent-color);
+}
+
+.deleteBtn {
+  background-color: rgba(245, 108, 108, 0.1);
+  color: var(--error-color);
+}
+
+/* 编辑器样式 */
+.operationEditor {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.editorRow {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.editorLabel {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.editorSelect,
+.editorInput {
+  padding: 10px 12px;
+  background-color: var(--bg-color);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-size: 14px;
+  color: var(--text-primary);
+  outline: none;
+}
+
+.editorSelect:focus,
+.editorInput:focus {
+  border-color: var(--accent-color);
+}
+
+.editorTextarea {
+  padding: 10px 12px;
+  background-color: var(--bg-color);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--text-primary);
+  font-family: monospace;
+  resize: vertical;
+  outline: none;
+}
+
+.editorTextarea:focus {
+  border-color: var(--accent-color);
+}
+
+.cancelBtn {
+  flex: 1;
+  padding: 12px;
+  background-color: var(--bg-color);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+/* 深色模式下的操作队列样式 */
+[data-theme='dark'] .operationItem {
+  background-color: #242424;
+  border-color: #3d3d3d;
+}
+
+[data-theme='dark'] .operationData {
+  background-color: #1a1a1a;
+  color: #cccccc;
+}
+
+[data-theme='dark'] .type_add {
+  background-color: rgba(72, 187, 120, 0.2);
+}
+
+[data-theme='dark'] .type_update {
+  background-color: rgba(246, 173, 85, 0.2);
+}
+
+[data-theme='dark'] .type_delete {
+  background-color: rgba(245, 108, 108, 0.2);
+}
+
+[data-theme='dark'] .editorSelect,
+[data-theme='dark'] .editorInput,
+[data-theme='dark'] .editorTextarea {
+  background-color: #2d2d2d;
+  border-color: #3d3d3d;
+  color: #ffffff;
+}
+
+[data-theme='dark'] .cancelBtn {
+  background-color: #2d2d2d;
+  border-color: #3d3d3d;
+  color: #cccccc;
+}

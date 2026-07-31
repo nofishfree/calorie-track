@@ -1,0 +1,353 @@
+.container {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--bg-color);
+}
+
+.navBar {
+  background-color: var(--bg-color);
+}
+
+.timeSelector {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background-color: var(--bg-color);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.timeLabel {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.timeInput {
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-size: 16px;
+  color: var(--text-primary);
+  background-color: var(--bg-color);
+}
+
+.searchSection {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background-color: var(--bg-color);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.searchSection :global(.adm-search-bar) {
+  flex: 1;
+}
+
+.addBtn {
+  flex-shrink: 0;
+  padding: 8px 16px;
+}
+
+.tabsContainer {
+  background-color: var(--card-bg);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.content {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.loading {
+  text-align: center;
+  padding: 20px;
+  color: var(--text-secondary);
+}
+
+.emptyState {
+  text-align: center;
+  padding: 30px 20px;
+}
+
+.emptyState p {
+  color: var(--text-tertiary);
+  margin-bottom: 16px;
+}
+
+.section {
+  padding: 16px;
+  background-color: var(--bg-color);
+  margin-bottom: 8px;
+}
+
+.sectionTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+}
+
+.foodList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.foodItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px;
+  background-color: var(--card-bg);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.foodActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.actionBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 6px;
+  background-color: var(--card-bg);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.actionBtn:hover {
+  background-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+.foodInfo {
+  flex: 1;
+}
+
+.foodNameRow {
+  display: flex;
+  align-items: center;
+}
+
+.foodName {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.foodCal {
+  display: block;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin-top: 4px;
+}
+
+.foodMeta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.usageCount {
+  font-size: 11px;
+  color: var(--text-secondary);
+  padding: 2px 6px;
+  background-color: var(--card-bg);
+  border-radius: 4px;
+}
+
+.foodSource {
+  font-size: 11px;
+  color: var(--accent-color);
+  padding: 2px 6px;
+  background-color: var(--card-bg);
+  border-radius: 4px;
+  border: 1px solid var(--accent-color);
+}
+
+.addCustomBtn {
+  flex-shrink: 0;
+}
+
+.addBtn {
+  flex-shrink: 0;
+}
+
+.popup {
+  padding-bottom: 20px;
+}
+
+.createDialogMask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+  display: flex;
+  align-items: flex-end;
+}
+
+.createDialogContent {
+  width: 100%;
+  background-color: var(--card-bg);
+  border-top-left-radius: 20px;
+  border-top-right-radius: 20px;
+  padding: 20px;
+}
+
+.popupHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.popupTitle {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.popup .timeSelector {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border-color);
+  margin-bottom: 8px;
+  background: transparent;
+}
+
+.popup .timeLabel {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.popup .timeInput {
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-size: 16px;
+  color: var(--text-primary);
+  background-color: var(--bg-color);
+}
+
+.dateTimeSelector {
+  display: flex;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border-color);
+  margin-bottom: 8px;
+}
+
+.dateTimeItem {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.deleteBtn {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 6px;
+  background-color: #ff4d4f;
+  color: white;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.amountRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--border-color);
+  margin-bottom: 16px;
+}
+
+.preview {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.previewItem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12px;
+  background-color: var(--card-bg);
+  border-radius: 8px;
+}
+
+.previewItem span {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.previewItem strong {
+  font-size: 16px;
+  color: var(--text-primary);
+  margin-top: 4px;
+}
+
+/* 套餐列表样式 */
+.planItemsList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.planItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px;
+  background-color: var(--card-bg);
+  border-radius: 8px;
+}
+
+.planItemInfo {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.planItemName {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.planItemBase {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.planItemQuantity {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--text-secondary);
+}

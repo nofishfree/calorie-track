@@ -1,0 +1,103 @@
+.container {
+  min-height: 100vh;
+  background-color: var(--bg-color);
+  display: flex;
+  flex-direction: column;
+  padding-bottom: calc(var(--nav-height) + var(--safe-area-bottom));
+}
+
+.backBtn {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--card-bg);
+  border: none;
+  border-radius: 50%;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.header {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+}
+
+.title {
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--primary-color);
+  margin-bottom: 8px;
+}
+
+.subtitle {
+  font-size: 14px;
+  color: var(--text-tertiary);
+}
+
+.form {
+  padding: 0 20px 20px;
+}
+
+.input {
+  margin-bottom: 12px;
+}
+
+/* 深色模式下输入框样式 */
+:global(.adm-input) {
+  background-color: var(--card-bg) !important;
+  color: var(--text-primary) !important;
+  border: 1px solid var(--border-color) !important;
+}
+
+:global(.adm-input)::placeholder {
+  color: var(--text-tertiary) !important;
+}
+
+:global(.adm-input-wrapper) {
+  background-color: var(--card-bg) !important;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+:global([data-theme='dark'] .adm-input) {
+  background-color: var(--card-bg) !important;
+  color: var(--text-primary) !important;
+  caret-color: var(--primary-color) !important;
+}
+
+:global([data-theme='dark'] .adm-input)::placeholder {
+  color: var(--text-tertiary) !important;
+  opacity: 0.8;
+}
+
+:global([data-theme='dark'] .adm-input-wrapper) {
+  background-color: var(--card-bg) !important;
+  border: 1px solid var(--border-color) !important;
+}
+
+:global([data-theme='dark'] .adm-input-element) {
+  color: var(--text-primary) !important;
+}
+
+.links {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 16px;
+}
+
+.link {
+  font-size: 14px;
+  color: var(--primary-color);
+  background: none;
+  border: none;
+  cursor: pointer;
+}

@@ -1,0 +1,87 @@
+.foodItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px;
+  background-color: var(--card-bg);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.foodItem:active {
+  opacity: 0.7;
+}
+
+.foodActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.actionBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 8px;
+  background-color: var(--card-bg);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.actionBtn:hover {
+  background-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+.foodInfo {
+  flex: 1;
+  min-width: 0;
+}
+
+.foodNameRow {
+  display: flex;
+  align-items: center;
+}
+
+.foodName {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.foodCal {
+  display: block;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin-top: 4px;
+}
+
+.foodMeta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.usageCount {
+  font-size: 11px;
+  color: var(--text-secondary);
+  padding: 2px 6px;
+  background-color: var(--card-bg);
+  border-radius: 4px;
+}
+
+.lastModifiedBy {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  padding: 2px 6px;
+  background-color: var(--card-bg);
+  border-radius: 4px;
+  flex-shrink: 0;
+  margin-left: auto;
+}

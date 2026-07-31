@@ -1,0 +1,29 @@
+# ===== 敏感文件 =====
+.env
+**/.env
+*.local
+
+# ===== 前端 (nutrition-tracker) =====
+node_modules/
+dist/
+dist-ssr/
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# ===== 后端 (track-server) =====
+target/
+**/*.rs.bk
+
+# ===== 编辑器 / 系统 =====
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+Thumbs.db

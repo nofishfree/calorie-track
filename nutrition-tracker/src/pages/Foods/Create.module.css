@@ -1,0 +1,197 @@
+.container {
+  min-height: 100vh;
+  background-color: var(--bg-color);
+}
+
+.navBar {
+  background-color: var(--card-bg);
+}
+
+.formContainer {
+  padding: 16px;
+}
+
+.formItem {
+  margin-bottom: 16px;
+}
+
+.halfFormItem {
+  flex: 1;
+}
+
+.rowContainer {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.label {
+  display: block;
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+
+.required {
+  color: #ff4d4f;
+  margin-left: 4px;
+}
+
+.input {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  font-size: 16px;
+  color: var(--text-primary);
+  background-color: var(--card-bg);
+  box-sizing: border-box;
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+}
+
+/* 深色模式下增强输入框样式 */
+[data-theme='dark'] .input {
+  border-color: rgba(255, 255, 255, 0.3);
+  background-color: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+}
+
+[data-theme='dark'] .input:focus {
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
+.calorieSection {
+  margin-bottom: 16px;
+}
+
+.calorieInputContainer {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.calorieInputContainer .input {
+  flex: 1;
+}
+
+.unitSelector {
+  display: flex;
+  background-color: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.unitBtn {
+  padding: 12px 20px;
+  border: none;
+  background: transparent;
+  font-size: 14px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.unitBtn.active {
+  background-color: var(--primary-color);
+  color: #ffffff;
+}
+
+.unitDropdown {
+  flex-shrink: 0;
+  min-width: 100px;
+}
+
+.unitDropdown .adm-selector {
+  --adm-color-primary: var(--accent-color);
+  --selector-item-active-bg-color: var(--accent-color);
+  --selector-item-active-border-color: var(--accent-color);
+  --selector-item-active-text-color: #ffffff;
+  --selector-item-bg-color: var(--card-bg);
+  --selector-item-border-color: var(--border-color);
+  --selector-item-text-color: var(--text-secondary);
+  background: transparent;
+}
+
+[data-theme='dark'] .unitDropdown .adm-selector {
+  --selector-item-bg-color: rgba(255, 255, 255, 0.08);
+  --selector-item-border-color: rgba(255, 255, 255, 0.3);
+  --selector-item-text-color: #ffffff;
+  --selector-item-active-bg-color: var(--accent-color);
+  --selector-item-active-border-color: var(--accent-color);
+  --selector-item-active-text-color: #ffffff;
+}
+
+[data-theme='dark'] .unitDropdown .adm-selector-item {
+  background-color: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.3);
+  color: #ffffff;
+}
+
+[data-theme='dark'] .unitDropdown .adm-selector-item-active {
+  background-color: var(--accent-color);
+  border-color: var(--accent-color);
+  color: #ffffff;
+}
+
+.nutritionSummary {
+  background-color: var(--card-bg);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 24px;
+}
+
+.summaryTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 12px;
+}
+
+.summaryGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.summaryItem {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background-color: var(--bg-color);
+  border-radius: 8px;
+}
+
+.summaryLabel {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.summaryValue {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.submitBtn {
+  height: 48px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+[data-theme='dark'] .unitBtn.active {
+  color: #ffffff;
+}
+
+.loading {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 14px;
+}

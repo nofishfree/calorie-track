@@ -1,0 +1,175 @@
+.container {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--bg-color);
+}
+
+.searchSection {
+  padding: 12px 16px;
+  background-color: var(--bg-color);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.accountSelector {
+  padding: 12px 16px;
+  background-color: var(--bg-color);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.accountSelectorTrigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background-color: var(--bg-color);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.accountLabel {
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.arrow {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.empty {
+  text-align: center;
+  padding: 40px 20px;
+}
+
+.empty p {
+  color: var(--text-tertiary);
+}
+
+.foodList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.foodItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px;
+  background-color: var(--card-bg);
+  border-radius: 8px;
+}
+
+.foodInfo {
+  flex: 1;
+}
+
+.foodNameRow {
+  display: flex;
+  align-items: center;
+}
+
+.foodName {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.foodMeta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.foodCal {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.foodSource {
+  font-size: 11px;
+  color: var(--text-secondary);
+  padding: 2px 6px;
+  background-color: var(--bg-color);
+  border-radius: 4px;
+}
+
+.foodActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.actionBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 6px;
+  background-color: var(--card-bg);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.actionBtn:hover {
+  background-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+.popupTitle {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 16px;
+}
+
+.accountList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.accountItem {
+  padding: 12px;
+  background-color: var(--bg-color);
+  border-radius: 8px;
+  font-size: 14px;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.accountItem:hover {
+  background-color: var(--border-color);
+}
+
+.accountItem.active {
+  background-color: var(--accent-color);
+  color: white;
+  font-weight: 600;
+  position: relative;
+  padding-left: 36px;
+}
+
+.accountItem.active::before {
+  content: '✓';
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 16px;
+  font-weight: 700;
+  color: white;
+}
