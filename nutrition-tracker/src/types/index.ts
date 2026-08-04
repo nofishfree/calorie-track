@@ -209,9 +209,10 @@ export interface VersionedSyncRequest {
 
 /** 后端同步操作请求结构 */
 export interface SyncOperationRequest {
+  /** 操作唯一 ID（UUID v4，由前端生成，用于去重和写入 operation_logs.id） */
+  id: string
   operation_type: string
   entity_type: string
-  entity_id: string
   data: Record<string, unknown>
 }
 
@@ -222,7 +223,6 @@ export interface OperationLog {
   serial_number: number
   operation_type: string
   entity_type: string
-  entity_id: string
   data: Record<string, unknown>
   created_at: string
 }
@@ -232,6 +232,7 @@ export interface VersionedSyncResponse {
   server_version: number
   operations: OperationLog[]
   head_processed: boolean
+  missing_avatar_hash?: string  // 如果头像哈希值不存在于数据库，返回给前端
 }
 
 

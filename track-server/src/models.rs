@@ -10,10 +10,38 @@ pub struct UserResponse {
     pub id: Uuid,
     pub email: String,
     pub username: Option<String>,
-    pub avatar: Option<String>,
+    pub avatar: Option<String>,  // 头像哈希值（SHA-256）
     pub is_admin: bool,
     pub created_at: DateTime<Utc>,
     pub data_version: i64,
+}
+
+// ============ 头像相关模型 ============
+
+#[derive(Debug, Serialize, Deserialize, FromRow)]
+pub struct Avatar {
+    pub id: Uuid,
+    pub hash: String,           // SHA-256 哈希值（64位十六进制）
+    pub data: String,           // base64 编码的头像数据
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UploadAvatarRequest {
+    pub hash: String,           // SHA-256 哈希值
+    pub data: String,           // base64 编码的头像数据
+}
+
+#[derive(Debug, Serialize)]
+pub struct UploadAvatarResponse {
+    pub hash: String,
+    pub success: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CheckAvatarResponse {
+    pub exists: bool,
+    pub hash: Option<String>,   // 如果不存在，返回哈希值供前端上传
 }
 
 #[derive(Debug, Deserialize)]
@@ -291,16 +319,16 @@ pub struct OperationLog {
     pub serial_number: i64,
     pub operation_type: String,
     pub entity_type: String,
-    pub entity_id: String,
     pub data: serde_json::Value,
     pub created_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct SyncOperationRequest {
+    /// 操作唯一 ID（UUID v4，由前端生成，用于去重和写入 operation_logs.id）
+    pub id: Uuid,
     pub operation_type: String,
     pub entity_type: String,
-    pub entity_id: String,
     pub data: serde_json::Value,
 }
 
@@ -334,6 +362,7 @@ pub struct VersionedSyncResponse {
     pub server_version: i64,
     pub operations: Vec<OperationLog>,
     pub head_processed: bool,
+    pub missing_avatar_hash: Option<String>,  // 如果头像哈希值不存在于数据库，返回给前端
 }
 
 // ============ 通用响应模型 ============

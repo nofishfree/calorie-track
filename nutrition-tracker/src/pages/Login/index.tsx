@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button, Input, Toast } from 'antd-mobile'
-import { useAuthStore, useOperationStore } from '../../stores'
-import { authAPI } from '../../api'
+import { useAuthStore } from '../../stores'
+import { authAPI, initUserData } from '../../api'
 import styles from './index.module.css'
 
 const LAST_EMAIL_KEY = 'last_login_email'
@@ -10,8 +10,7 @@ const LAST_EMAIL_KEY = 'last_login_email'
 export default function LoginPage() {
   const navigate = useNavigate()
   const { login } = useAuthStore()
-  const startPolling = useOperationStore(state => state.startPolling)
-  
+
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -41,10 +40,18 @@ export default function LoginPage() {
         console.log('[Login] Using nested data structure')
         localStorage.setItem(LAST_EMAIL_KEY, email)
         login(response.data.token, response.data.user)
-        // 登录成功后启动轮询同步
-        startPolling()
-        Toast.show('登录成功')
-        navigate('/profile')
+        
+        // 等待初始数据加载完成后再跳转
+        const result = await initUserData(response.data.user.id)
+
+        // 跳转页面
+        navigate('/', { replace: true })
+        
+        if (result.success) {
+          Toast.show('登录成功')
+        } else {
+          Toast.show('登录成功，但数据加载不完整')
+        }
       } else {
         console.error('[Login] Unexpected response structure:', response)
         Toast.show('登录失败，请检查邮箱和密码')

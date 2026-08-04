@@ -1,8 +1,9 @@
-﻿import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Input, Toast } from 'antd-mobile'
 import { useAuthStore } from '../../stores'
 import { useOperationStore } from '../../stores/operationStore'
+import { avatarStore, computeHash } from '../../stores/avatarStore'
 import styles from './index.module.css'
 
 export default function AccountInfoPage() {
@@ -11,7 +12,29 @@ export default function AccountInfoPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [username, setUsername] = useState(user?.username || user?.email || '')
-  const [avatar, setAvatar] = useState(user?.avatar || '')
+  // avatarHash: 当前头像的哈希值（存储在 user.avatar 中）
+  const [avatarHash, setAvatarHash] = useState(user?.avatar || '')
+  // avatarData: 当前显示的 base64 数据（从 IndexedDB 加载）
+  const [avatarData, setAvatarData] = useState<string>('')
+
+  // 页面加载时，从 IndexedDB 获取头像数据
+  useEffect(() => {
+    async function loadAvatar() {
+      if (user?.avatar) {
+        const data = await avatarStore.getAvatar(user.avatar)
+        if (data) {
+          setAvatarData(data)
+        } else {
+          // 本地不存在，尝试从服务器获取
+          const fetchedData = await avatarStore.getOrFetchAvatar(user.avatar)
+          if (fetchedData) {
+            setAvatarData(fetchedData)
+          }
+        }
+      }
+    }
+    loadAvatar()
+  }, [user?.avatar])
 
   const handleBack = () => navigate(-1)
 
@@ -19,7 +42,7 @@ export default function AccountInfoPage() {
     fileInputRef.current?.click()
   }
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
 
@@ -34,9 +57,18 @@ export default function AccountInfoPage() {
     }
 
     const reader = new FileReader()
-    reader.onload = () => {
-      const result = reader.result as string
-      setAvatar(result)
+    reader.onload = async () => {
+      const base64Data = reader.result as string
+
+      // 计算 SHA-256 哈希值
+      const hash = await computeHash(base64Data)
+
+      // 保存到本地 IndexedDB
+      await avatarStore.saveAvatar(hash, base64Data)
+
+      // 更新本地状态
+      setAvatarHash(hash)
+      setAvatarData(base64Data)
     }
     reader.readAsDataURL(file)
 
@@ -44,7 +76,7 @@ export default function AccountInfoPage() {
     e.target.value = ''
   }
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const trimmedUsername = username.trim()
     if (!trimmedUsername) {
       Toast.show('用户名不能为空')
@@ -53,17 +85,21 @@ export default function AccountInfoPage() {
 
     const updatedData = {
       username: trimmedUsername,
-      avatar: avatar || undefined,
+      avatar: avatarHash || undefined,  // 存储哈希值而非 base64
     }
 
     updateUser(updatedData)
 
     // 添加到操作队列，等待同步到服务器
+    // 只包含哈希值，不包含 base64 数据（减少请求体大小）
     if (user) {
       useOperationStore.getState().addOperation(
         'account',
-        user.id,
-        { ...user, ...updatedData },
+        {
+          id: user.id,
+          username: trimmedUsername,
+          avatar: avatarHash || undefined,
+        },
         'update'
       )
     }
@@ -83,8 +119,8 @@ export default function AccountInfoPage() {
       <div className={styles.content}>
         <div className={styles.avatarSection}>
           <div className={styles.avatarWrapper} onClick={handleAvatarClick}>
-            {avatar ? (
-              <img src={avatar} alt="头像" className={styles.avatarImg} />
+            {avatarData ? (
+              <img src={avatarData} alt="头像" className={styles.avatarImg} />
             ) : (
               <svg viewBox="0 0 24 24" fill="currentColor" width="48" height="48" className={styles.avatarPlaceholder}>
                 <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
@@ -128,4 +164,3 @@ export default function AccountInfoPage() {
     </div>
   )
 }
-

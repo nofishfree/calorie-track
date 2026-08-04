@@ -1,6 +1,6 @@
 import axios from 'axios'
 import dayjs from 'dayjs'
-import { useAuthStore, useGoalStore, useOperationStore } from '../stores'
+import { useAuthStore, useGoalStore } from '../stores'
 import type { ServerResponse, ServerFood, ServerMealRecord, ServerGoalTemplate, ServerUserMe, VersionedSyncRequest, VersionedSyncResponse } from '../types'
 
 const api = axios.create({
@@ -76,7 +76,11 @@ export const userAPI = {
 // 记录相关 API
 export const recordsAPI = {
   getRecordsByDate: (date: string) => {
-    return api.get<unknown, ServerResponse<ServerMealRecord[]>>('/api/records', { params: { date, limit: 100 } })
+    return api.get<unknown, ServerResponse<ServerMealRecord[]>>('/api/records', { params: { date, limit: 100, tz_offset: -new Date().getTimezoneOffset() } })
+  },
+
+  getRecordsByDateRange: (startDate: string, endDate: string) => {
+    return api.get<unknown, ServerResponse<ServerMealRecord[]>>('/api/records', { params: { date: startDate, end_date: endDate, limit: 500, tz_offset: -new Date().getTimezoneOffset() } })
   },
 }
 
@@ -133,9 +137,9 @@ export const syncAPI = {
   uploadOperation: async (operation: {
     operation_type: 'add' | 'update' | 'delete'
     entity_type: 'food' | 'record' | 'plan' | 'goal' | 'account'
-    entity_id: string
     data: Record<string, unknown>
   }) => {
+    const dataId = (operation.data as Record<string, unknown>).id as string
     switch (operation.entity_type) {
       case 'food': {
         const food = operation.data as Record<string, unknown>
@@ -152,7 +156,7 @@ export const syncAPI = {
             fat_g: food.fat_g,
           })
         } else if (operation.operation_type === 'update') {
-          return api.put(`/api/foods/${operation.entity_id}`, {
+          return api.put(`/api/foods/${dataId}`, {
             name: food.name,
             num: food.num,
             calorie: food.calorie,
@@ -162,7 +166,7 @@ export const syncAPI = {
             unit: food.unit,
           })
         } else {
-          return api.delete(`/api/foods/${operation.entity_id}`)
+          return api.delete(`/api/foods/${dataId}`)
         }
       }
       case 'record': {
@@ -203,7 +207,7 @@ export const syncAPI = {
             is_quick_add: record.is_quick_add,
           })
         } else if (operation.operation_type === 'update') {
-          return api.put(`/api/records/${operation.entity_id}`, {
+          return api.put(`/api/records/${dataId}`, {
             food_id: record.food_id || foodData?.id,
             food: foodData,
             serving_count: record.serving_count,
@@ -222,7 +226,7 @@ export const syncAPI = {
             is_quick_add: record.is_quick_add,
           })
         } else {
-          return api.delete(`/api/records/${operation.entity_id}`)
+          return api.delete(`/api/records/${dataId}`)
         }
       }
       case 'plan': {
@@ -238,7 +242,7 @@ export const syncAPI = {
             })),
           })
         } else if (operation.operation_type === 'update') {
-          return api.put(`/api/plans/${operation.entity_id}`, {
+          return api.put(`/api/plans/${dataId}`, {
             name: plan.name,
             items: items.map(item => ({
               food_id: item.food_id,
@@ -247,7 +251,7 @@ export const syncAPI = {
             })),
           })
         } else {
-          return api.delete(`/api/plans/${operation.entity_id}`)
+          return api.delete(`/api/plans/${dataId}`)
         }
       }
       case 'goal': {
@@ -264,7 +268,7 @@ export const syncAPI = {
         } else if (operation.operation_type === 'update') {
           // 尝试 PUT 更新；若 ID 非 UUID（400）或服务器上不存在（404），回退为 POST 创建
           try {
-            return await api.put(`/api/goal-templates/${operation.entity_id}`, {
+            return await api.put(`/api/goal-templates/${dataId}`, {
               name: template.name,
               type: template.type,
               cycle_days: template.cycle_days,
@@ -286,18 +290,17 @@ export const syncAPI = {
               daily_goals: template.daily_goals,
               last_active_date: template.last_active_date,
             })
-            // 用服务器返回的真实 UUID 更新本地状态和后续操作的 entity_id
+            // 用服务器返回的真实 UUID 更新本地状态
             const newId = response?.data?.id
-            if (newId && newId !== operation.entity_id) {
-              useGoalStore.getState().updateTemplateId(operation.entity_id, newId)
-              useOperationStore.getState().updateEntityId('goal', operation.entity_id, newId)
+            if (newId && newId !== dataId) {
+              useGoalStore.getState().updateTemplateId(dataId, newId)
             }
             return response
           }
         } else {
           // delete：ID 非 UUID（400）或已不存在（404）均视为成功
           try {
-            return await api.delete(`/api/goal-templates/${operation.entity_id}`)
+            return await api.delete(`/api/goal-templates/${dataId}`)
           } catch (error: any) {
             const status = error.response?.status
             if (status !== 404 && status !== 400) throw error
@@ -319,7 +322,89 @@ export const syncAPI = {
     const response = await api.post<unknown, ServerResponse<VersionedSyncResponse>>('/api/sync/versioned', request)
     return response.data
   },
+
+  // 头像相关 API
+  getAvatar: async (hash: string) => {
+    return api.get<unknown, ServerResponse<{ id: string; hash: string; data: string }>>(`/api/avatars/${hash}`)
+  },
+
+  uploadAvatar: async (data: { hash: string; data: string }) => {
+    return api.post<unknown, ServerResponse<{ hash: string; success: boolean }>>('/api/avatars', data)
+  },
+
+  checkAvatar: async (hash: string) => {
+    return api.get<unknown, ServerResponse<{ exists: boolean; hash?: string }>>(`/api/avatars/check/${hash}`)
+  },
 }
 
 export default api
+
+// 数据初始化工具 - 登录后加载所有必要数据
+export const initUserData = async (userId: string) => {
+  const { useFoodStore, useRecordStore, useGoalStore } = await import('../stores')
+  const { getToday, formatDate } = await import('../utils/helpers')
+  const dayjs = (await import('dayjs')).default
+
+  try {
+    // 1. 加载食物库
+    const foodsRes = await foodsAPI.getFoods()
+    const serverFoods = foodsRes.data || []
+    const mappedFoods = serverFoods.map(f => ({
+      ...f,
+      user_id: f.user_id ?? undefined,
+    }))
+    useFoodStore.getState().setFoods(mappedFoods)
+
+    // 2. 加载最近7天的记录
+    const today = getToday()
+    const sevenDaysAgo = formatDate(dayjs().subtract(6, 'day').toDate())
+    
+    const recordsByDate = useRecordStore.getState()
+    const allRecords: any[] = []
+
+    // 逐天获取记录（简单可靠）
+    for (let i = 6; i >= 0; i--) {
+      const date = formatDate(dayjs().subtract(i, 'day').toDate())
+      try {
+        const res = await recordsAPI.getRecordsByDate(date)
+        const records = res.data || []
+        const mappedRecords = records.map((r: any) => ({
+          ...r,
+          user_id: userId,
+          food: {
+            ...r.food,
+            user_id: r.food?.user_id ?? undefined,
+          },
+        }))
+        allRecords.push(...mappedRecords)
+        recordsByDate.setRecordsForDate(date, mappedRecords)
+      } catch (e) {
+        console.error(`Failed to fetch records for ${date}:`, e)
+      }
+    }
+
+    // 3. 加载目标模板
+    const goalsRes = await goalTemplatesAPI.getAll()
+    const serverTemplates = goalsRes.data || []
+    if (serverTemplates.length > 0) {
+      const templates = serverTemplates.map(t => ({
+        id: t.id,
+        name: t.name,
+        type: t.type,
+        cycle_days: t.cycle_days,
+        today_index: t.today_index,
+        daily_goals: t.daily_goals,
+        is_current: t.is_current,
+        last_active_date: t.last_active_date || undefined,
+      }))
+      const currentTemplate = templates.find(t => t.is_current) || templates[0]
+      useGoalStore.getState().syncTemplates(templates, currentTemplate.id)
+    }
+
+    return { success: true, foods: mappedFoods, records: allRecords }
+  } catch (error) {
+    console.error('Failed to initialize user data:', error)
+    return { success: false, error }
+  }
+}
 

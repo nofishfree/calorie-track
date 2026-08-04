@@ -1,14 +1,14 @@
-﻿import { useState } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button, Input, Toast } from 'antd-mobile'
 import { useAuthStore } from '../../stores'
-import { authAPI } from '../../api'
+import { authAPI, initUserData } from '../../api'
 import styles from './index.module.css'
 
 export default function RegisterPage() {
   const navigate = useNavigate()
   const { login } = useAuthStore()
-  
+
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -36,8 +36,18 @@ export default function RegisterPage() {
       
       if (response?.data?.token && response?.data?.user) {
         login(response.data.token, response.data.user)
-        Toast.show('注册成功')
-        navigate('/profile')
+        
+        // 等待初始数据加载完成后再跳转
+        const result = await initUserData(response.data.user.id)
+
+        // 跳转到今日页
+        navigate('/', { replace: true })
+        
+        if (result.success) {
+          Toast.show('注册成功')
+        } else {
+          Toast.show('注册成功，但数据加载不完整')
+        }
       } else if (response?.message) {
         Toast.show(response.message)
       } else {

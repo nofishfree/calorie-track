@@ -1,5 +1,6 @@
-﻿import { create } from 'zustand'
+import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import dayjs from 'dayjs'
 import type { MealRecord } from '../types'
 import { generateUUID } from '../db/db'
 import { addRecord as addRecordToDB } from '../db/recordStore'
@@ -16,6 +17,8 @@ interface RecordState {
   setRecords: (records: MealRecord[]) => void
   setRecordsForDate: (date: string, newRecords: MealRecord[]) => void
   clearRecords: () => void
+  clearRecordsForAccount: (accountId: string) => void
+  applyRemoteOperation: (operation_type: string, data: Record<string, unknown>) => void
   getRecordsByDate: (date: string, userId?: string) => MealRecord[]
   getDailyNutrition: (date: string, userId?: string) => {
     calories: number
@@ -41,7 +44,7 @@ export const useRecordStore = create<RecordState>()(
         set((state) => ({
           records: [...state.records, newRecord],
         }))
-        useOperationStore.getState().addOperation('record', newRecord.id, newRecord)
+        useOperationStore.getState().addOperation('record', newRecord)
 
         // 同时保存到 IndexedDB
         const recordToSave = {
@@ -80,7 +83,7 @@ export const useRecordStore = create<RecordState>()(
           }
         })
         if (updatedRecordData) {
-          useOperationStore.getState().addOperation('record', id, updatedRecordData, 'update')
+          useOperationStore.getState().addOperation('record', updatedRecordData, 'update')
         }
       },
       
@@ -89,7 +92,7 @@ export const useRecordStore = create<RecordState>()(
         set((state) => ({
           records: state.records.filter((r) => r.id !== id),
         }))
-        useOperationStore.getState().deleteOperation('record', id, record)
+        useOperationStore.getState().deleteOperation('record', record)
       },
       
       setRecords: (records) => {
@@ -101,9 +104,9 @@ export const useRecordStore = create<RecordState>()(
         const userId = isLocalAccount ? LOCAL_ACCOUNT_ID : (currentAccountId || LOCAL_ACCOUNT_ID)
         set((state) => {
           const otherRecords = state.records.filter((r) => {
-            if (!r.record_time) return true
-            const recordDate = r.record_time.split('T')[0]
-            if (recordDate !== date) return true
+        if (!r.record_time) return true
+        const recordDate = dayjs(r.record_time).format('YYYY-MM-DD')
+        if (recordDate !== date) return true
             const recordUserId = r.user_id || r.food?.user_id || 'local-account'
             const normalizedUserId = recordUserId === 'local' ? 'local-account' : recordUserId
             return normalizedUserId !== userId
@@ -115,15 +118,42 @@ export const useRecordStore = create<RecordState>()(
       clearRecords: () => {
         set({ records: [] })
       },
+
+      clearRecordsForAccount: (accountId) => {
+        set((state) => ({
+          // 仅移除该账号的记录，保留其他账号的数据
+          records: state.records.filter((r) => {
+            const recordUserId = r.user_id || r.food?.user_id || 'local-account'
+            return recordUserId !== accountId
+          }),
+        }))
+      },
+
+      applyRemoteOperation: (operation_type, data) => {
+        const id = data.id as string
+        if (operation_type === 'delete') {
+          set((state) => ({ records: state.records.filter(r => r.id !== id) }))
+        } else {
+          // add 或 update 均为 upsert，不创建新操作
+          const recordData = data as unknown as MealRecord
+          set((state) => {
+            const exists = state.records.some(r => r.id === id)
+            if (exists) {
+              return { records: state.records.map(r => r.id === id ? { ...r, ...recordData } : r) }
+            }
+            return { records: [...state.records, recordData] }
+          })
+        }
+      },
       
       getRecordsByDate: (date, userId) => {
         const { currentAccountId: authAccountId, isLocalAccount } = useAuthStore.getState()
         const targetUserId = userId || (isLocalAccount ? LOCAL_ACCOUNT_ID : (authAccountId || LOCAL_ACCOUNT_ID))
         return get()
           .records.filter((r) => {
-            if (!r.record_time) return false
-            const recordDate = r.record_time.split('T')[0]
-            if (recordDate !== date) return false
+        if (!r.record_time) return false
+        const recordDate = dayjs(r.record_time).format('YYYY-MM-DD')
+        if (recordDate !== date) return false
             const recordUserId = r.user_id || r.food?.user_id || 'local-account'
             const normalizedUserId = recordUserId === 'local' ? 'local-account' : recordUserId
             return normalizedUserId === targetUserId

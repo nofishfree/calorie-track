@@ -1,11 +1,8 @@
 import { useEffect, useMemo } from 'react'
-import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom'
+import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { ConfigProvider } from 'antd-mobile'
-import { BottomNav } from './components'
 import { initTheme, useAuthStore, useThemeStore, useOperationStore } from './stores'
 import HomePage from './pages/Home'
-import StatsPage from './pages/Stats'
-import ProfilePage from './pages/Profile'
 import GoalSettingPage from './pages/GoalSetting'
 import CycleGoalPage from './pages/GoalSetting/CycleGoal'
 import DailyGoalPage from './pages/GoalSetting/DailyGoal'
@@ -26,9 +23,11 @@ import './styles/global.css'
 initTheme()
 
 function AutoLogin() {
-  const { isLoggedIn, login } = useAuthStore()
+  const { isLoggedIn, isLocalAccount, login } = useAuthStore()
   const startPolling = useOperationStore(state => state.startPolling)
-  
+  const stopPolling = useOperationStore(state => state.stopPolling)
+
+  // 从 localStorage 恢复登录状态
   useEffect(() => {
     const token = localStorage.getItem('auth-storage')
     if (token && !isLoggedIn) {
@@ -36,25 +35,27 @@ function AutoLogin() {
         const parsed = JSON.parse(token)
         if (parsed.state?.token) {
           login(parsed.state.token, parsed.state.user)
-          // 自动登录成功后启动轮询同步
-          if (parsed.state.user?.id && parsed.state.user.id !== 'local-account') {
-            startPolling()
-          }
         }
       } catch {
         // ignore
       }
     }
-  }, [isLoggedIn, login, startPolling])
+  }, [isLoggedIn, login])
+
+  // 根据登录状态统一管理轮询：已登录且非本地账号时启动，否则停止
+  useEffect(() => {
+    if (isLoggedIn && !isLocalAccount) {
+      startPolling()
+    } else {
+      stopPolling()
+    }
+  }, [isLoggedIn, isLocalAccount, startPolling, stopPolling])
 
   return null
 }
 
 function AppContent() {
-  const location = useLocation()
   const { mode } = useThemeStore()
-  
-  const showNav = ['/', '/stats', '/profile'].includes(location.pathname)
 
   const config = useMemo(() => {
     const effectiveTheme = mode === 'system' 
@@ -95,8 +96,6 @@ function AppContent() {
       <AutoLogin />
       <Routes>
         <Route path="/" element={<HomePage />} />
-        <Route path="/stats" element={<StatsPage />} />
-        <Route path="/profile" element={<ProfilePage />} />
         <Route path="/goal-setting" element={<GoalSettingPage />} />
         <Route path="/goal-setting/cycle/:id?" element={<CycleGoalPage />} />
         <Route path="/goal-setting/daily/:id?" element={<DailyGoalPage />} />
@@ -113,7 +112,6 @@ function AppContent() {
         <Route path="/account-info" element={<AccountInfoPage />} />
         <Route path="/metabolism" element={<MetabolismPage />} />
       </Routes>
-      {showNav && <BottomNav />}
     </ConfigProvider>
   )
 }

@@ -1,6 +1,6 @@
 .container {
-  min-height: 100vh;
-  padding-bottom: calc(var(--nav-height) + var(--safe-area-bottom));
+  min-height: 100%;
+  padding-bottom: var(--safe-area-bottom);
   background-color: var(--bg-color);
 }
 

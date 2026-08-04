@@ -1,13 +1,13 @@
 import { useMemo, useState, useRef, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Dialog, Button, Popup, Input } from 'antd-mobile'
-import { CalorieRing, NutrientCards, RecordCard } from '../../components'
+import { Dialog, Button, Popup, Input, Selector } from 'antd-mobile'
+import { CalorieRing, NutrientCards, RecordCard, AvatarDisplay } from '../../components'
 import { useGoalStore, useAuthStore, useRecordStore, useFoodStore, usePlanStore } from '../../stores'
-import { foodsAPI, recordsAPI } from '../../api'
 import type { Food, MealRecord } from '../../types'
 import { getToday } from '../../utils/helpers'
 import { generateUUID } from '../../db/db'
 import dayjs from 'dayjs'
+import ProfilePage from '../Profile'
 import styles from './index.module.css'
 
 export default function HomePage() {
@@ -18,7 +18,7 @@ export default function HomePage() {
   const dateInputRef = useRef<HTMLInputElement>(null)
   const goalStore = useGoalStore()
   const goal = goalStore.getGoalForDate(selectedDate)
-  const { currentAccountId, isLocalAccount } = useAuthStore()
+  const { currentAccountId, isLocalAccount, user } = useAuthStore()
   const { records, getRecordsByDate, deleteRecord: deleteRecordFromStore } = useRecordStore()
   const { clearNewFoods } = useFoodStore()
   const { clearNewPlans } = usePlanStore()
@@ -38,6 +38,7 @@ export default function HomePage() {
   const [editQuickAddProtein, setEditQuickAddProtein] = useState<string>('')
   const [editQuickAddFat, setEditQuickAddFat] = useState<string>('')
   const [editQuickAddCarbs, setEditQuickAddCarbs] = useState<string>('')
+  const [editQuickAddCaloriesUnit, setEditQuickAddCaloriesUnit] = useState<'kcal' | 'kj'>('kj')
 
   const [quickAddName, setQuickAddName] = useState('')
   const [quickAddCalories, setQuickAddCalories] = useState<string>('')
@@ -45,6 +46,8 @@ export default function HomePage() {
   const [quickAddFat, setQuickAddFat] = useState<string>('')
   const [quickAddCarbs, setQuickAddCarbs] = useState<string>('')
   const [quickAddTime, setQuickAddTime] = useState(dayjs().format('HH:mm'))
+  const [quickAddCaloriesUnit, setQuickAddCaloriesUnit] = useState<'kcal' | 'kj'>('kj')
+  const [showProfileDrawer, setShowProfileDrawer] = useState(false)
 
   const todayRecords = useMemo(() => {
     return getRecordsByDate(selectedDate, currentAccountId)
@@ -68,42 +71,6 @@ export default function HomePage() {
   useEffect(() => {
     goalStore.checkAndUpdateDate()
   }, [goalStore, selectedDate])
-
-  // 异步获取当前账号全部食物列表（不阻塞界面）
-  useEffect(() => {
-    if (isLocalAccount) return
-    foodsAPI.getFoods()
-      .then((res) => {
-        const serverFoods = res.data || []
-        const mappedFoods: Food[] = serverFoods.map(f => ({
-          ...f,
-          user_id: f.user_id ?? undefined,
-        }))
-        useFoodStore.getState().setFoods(mappedFoods)
-      })
-      .catch((err) => console.error('Failed to fetch foods:', err))
-  }, [isLocalAccount])
-
-  // 异步获取当前页面日期的食物记录（不阻塞界面）
-  useEffect(() => {
-    if (isLocalAccount) return
-    recordsAPI.getRecordsByDate(selectedDate)
-      .then((res) => {
-        const serverRecords = res.data || []
-        const { currentAccountId: accountId } = useAuthStore.getState()
-        const userId = accountId || 'local-account'
-        const mappedRecords: MealRecord[] = serverRecords.map(r => ({
-          ...r,
-          user_id: userId,
-          food: {
-            ...r.food,
-            user_id: r.food.user_id ?? undefined,
-          },
-        }))
-        useRecordStore.getState().setRecordsForDate(selectedDate, mappedRecords)
-      })
-      .catch((err) => console.error('Failed to fetch records:', err))
-  }, [selectedDate, isLocalAccount])
 
   const handleQuickAddNumberChange = (setter: (val: string) => void, value: string) => {
     let filtered = value.replace(/[^\d.]/g, '')
@@ -135,13 +102,19 @@ export default function HomePage() {
     const record_time = dayjs(`${selectedDate}T${quickAddTime}:00`).toISOString()
     const { addRecord } = useRecordStore.getState()
 
+    // 千焦转换为千卡：1 kcal = 4.184 kJ
+    const caloriesInput = parseVal(quickAddCalories)
+    const caloriesKcal = caloriesInput >= 0 && quickAddCaloriesUnit === 'kj'
+      ? Math.round((caloriesInput / 4.184) * 100) / 100
+      : caloriesInput
+
     addRecord({
       food: {
         id: generateUUID(),
         name: quickAddName.trim(),
         num: 100,
-        calorie: parseVal(quickAddCalories) >= 0 ? parseVal(quickAddCalories) : 0,
-        calorie_unit: 'kj',
+        calorie: caloriesKcal >= 0 ? caloriesKcal : 0,
+        calorie_unit: quickAddCaloriesUnit,
         carbs_g: parseVal(quickAddCarbs) >= 0 ? parseVal(quickAddCarbs) : 0,
         protein_g: parseVal(quickAddProtein) >= 0 ? parseVal(quickAddProtein) : 0,
         fat_g: parseVal(quickAddFat) >= 0 ? parseVal(quickAddFat) : 0,
@@ -149,7 +122,7 @@ export default function HomePage() {
       },
       serving_count: 1,
       record_time,
-      calories_total: parseVal(quickAddCalories),
+      calories_total: caloriesKcal,
       protein_total: parseVal(quickAddProtein),
       fat_total: parseVal(quickAddFat),
       carbs_total: parseVal(quickAddCarbs),
@@ -163,6 +136,7 @@ export default function HomePage() {
     setQuickAddFat('')
     setQuickAddCarbs('')
     setQuickAddTime(dayjs().format('HH:mm'))
+    setQuickAddCaloriesUnit('kj')
   }
 
   const handlePrevDay = () => {
@@ -231,7 +205,13 @@ export default function HomePage() {
 
     if (record.is_quick_add) {
       setEditQuickAddName(record.food.name)
-      setEditQuickAddCalories(record.calories_total >= 0 ? String(record.calories_total) : '')
+      const unit = (record.food.calorie_unit as 'kcal' | 'kj') || 'kj'
+      setEditQuickAddCaloriesUnit(unit)
+      // calories_total 存储的是 kcal，编辑时按原始单位换算回显示值
+      const caloriesDisplay = record.calories_total >= 0
+        ? (unit === 'kj' ? Math.round(record.calories_total * 4.184 * 10) / 10 : record.calories_total)
+        : -1
+      setEditQuickAddCalories(caloriesDisplay >= 0 ? String(caloriesDisplay) : '')
       setEditQuickAddProtein(record.protein_total >= 0 ? String(record.protein_total) : '')
       setEditQuickAddFat(record.fat_total >= 0 ? String(record.fat_total) : '')
       setEditQuickAddCarbs(record.carbs_total >= 0 ? String(record.carbs_total) : '')
@@ -268,18 +248,24 @@ export default function HomePage() {
           return isNaN(num) ? -1 : Math.round(num * 10) / 10
         }
 
+        // 千焦转换为千卡：1 kcal = 4.184 kJ
+        const editCaloriesInput = parseVal(editQuickAddCalories)
+        const editCaloriesKcal = editCaloriesInput >= 0 && editQuickAddCaloriesUnit === 'kj'
+          ? Math.round((editCaloriesInput / 4.184) * 100) / 100
+          : editCaloriesInput
+
         updateRecordInStore(editingRecord.id, {
           record_time,
           food: {
             ...editingRecord.food,
             name: editQuickAddName.trim(),
-            calorie: parseVal(editQuickAddCalories) >= 0 ? parseVal(editQuickAddCalories) : 0,
-            calorie_unit: editingRecord.food.calorie_unit || 'kj',
+            calorie: editCaloriesKcal >= 0 ? editCaloriesKcal : 0,
+            calorie_unit: editQuickAddCaloriesUnit,
             carbs_g: parseVal(editQuickAddCarbs) >= 0 ? parseVal(editQuickAddCarbs) : 0,
             protein_g: parseVal(editQuickAddProtein) >= 0 ? parseVal(editQuickAddProtein) : 0,
             fat_g: parseVal(editQuickAddFat) >= 0 ? parseVal(editQuickAddFat) : 0,
           },
-          calories_total: parseVal(editQuickAddCalories),
+          calories_total: editCaloriesKcal,
           protein_total: parseVal(editQuickAddProtein),
           fat_total: parseVal(editQuickAddFat),
           carbs_total: parseVal(editQuickAddCarbs),
@@ -393,6 +379,9 @@ export default function HomePage() {
   return (
     <div className={styles.container}>
       <header className={styles.header}>
+        <button className={styles.avatar} onClick={() => setShowProfileDrawer(true)}>
+          <AvatarDisplay hash={user?.avatar} size={48} />
+        </button>
         <button className={styles.dateBtn} onClick={handlePrevDay}>
           ‹
         </button>
@@ -511,7 +500,19 @@ export default function HomePage() {
                         placeholder={editQuickAddCalories === '' ? '未知' : ''}
                         style={{ width: '60px', textAlign: 'right', border: 'none', padding: '0' }}
                       />
-                      <span className={styles.previewUnit}>千卡</span>
+                      <Selector
+                        options={[
+                          { label: '千卡', value: 'kcal' },
+                          { label: '千焦', value: 'kj' },
+                        ]}
+                        value={[editQuickAddCaloriesUnit]}
+                        onChange={(arr) => {
+                          if (arr.length > 0) {
+                            setEditQuickAddCaloriesUnit(arr[0] as 'kcal' | 'kj')
+                          }
+                        }}
+                        style={{ '--border-radius': '4px', '--padding': '2px 6px', fontSize: '11px' } as React.CSSProperties}
+                      />
                     </div>
                   </div>
                   <div className={styles.previewItem}>
@@ -774,7 +775,19 @@ export default function HomePage() {
                     placeholder={quickAddCalories === '' ? '未知' : ''}
                     style={{ width: '60px', textAlign: 'right', border: 'none', padding: '0' }}
                   />
-                  <span className={styles.previewUnit}>千卡</span>
+                  <Selector
+                    options={[
+                      { label: '千卡', value: 'kcal' },
+                      { label: '千焦', value: 'kj' },
+                    ]}
+                    value={[quickAddCaloriesUnit]}
+                    onChange={(arr) => {
+                      if (arr.length > 0) {
+                        setQuickAddCaloriesUnit(arr[0] as 'kcal' | 'kj')
+                      }
+                    }}
+                    style={{ '--border-radius': '4px', '--padding': '2px 6px', fontSize: '11px' } as React.CSSProperties}
+                  />
                 </div>
               </div>
               <div className={styles.previewItem}>
@@ -837,6 +850,15 @@ export default function HomePage() {
         max="2030-12-31"
         className={styles.hiddenDateInput}
       />
+
+      <Popup
+        visible={showProfileDrawer}
+        onMaskClick={() => setShowProfileDrawer(false)}
+        position="left"
+        bodyStyle={{ width: '340px', height: '100%' }}
+      >
+        <ProfilePage />
+      </Popup>
 
     </div>
   )

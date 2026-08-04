@@ -96,13 +96,12 @@ pub async fn create_goal_template(
     .fetch_one(&pool)
     .await?;
 
-    // 记录操作日志
+    // 记录操作日志（data.id 即为实体 ID）
     record_operation(
         &pool,
         auth.user_id,
         "add",
         "goal",
-        &template.id.to_string(),
         json!(template),
     )
     .await?;
@@ -187,13 +186,12 @@ pub async fn update_goal_template(
     .fetch_one(&pool)
     .await?;
 
-    // 记录操作日志
+    // 记录操作日志（data.id 即为实体 ID）
     record_operation(
         &pool,
         auth.user_id,
         "update",
         "goal",
-        &template.id.to_string(),
         json!(template),
     )
     .await?;
@@ -247,14 +245,13 @@ pub async fn delete_goal_template(
         .await?;
     }
 
-    // 记录操作日志
+    // 记录操作日志（delete 操作通过 data.id 标识被删除的实体）
     record_operation(
         &pool,
         auth.user_id,
         "delete",
         "goal",
-        &template_id.to_string(),
-        json!({}),
+        json!({ "id": template_id.to_string() }),
     )
     .await?;
 

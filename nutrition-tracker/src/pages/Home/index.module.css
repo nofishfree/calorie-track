@@ -2,17 +2,37 @@
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  padding-bottom: calc(var(--nav-height) + var(--safe-area-bottom) + 80px);
+  padding-bottom: calc(var(--safe-area-bottom) + 80px);
   background-color: var(--bg-color);
 }
 
 .header {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 16px;
   background-color: var(--bg-color);
   gap: 16px;
+}
+
+.avatar {
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background-color: var(--bg-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  border: none;
+  padding: 0;
+  overflow: hidden;
 }
 
 .dateBtn {
@@ -93,7 +113,7 @@
 .quickAddFloatingButton {
   position: fixed;
   right: 96px;
-  bottom: calc(var(--nav-height) + var(--safe-area-bottom) + 20px);
+  bottom: calc(var(--safe-area-bottom) + 20px);
   width: 28px;
   height: 28px;
   border: none;
@@ -124,7 +144,7 @@
 .addButton {
   position: fixed;
   right: 20px;
-  bottom: calc(var(--nav-height) + var(--safe-area-bottom) + 20px);
+  bottom: calc(var(--safe-area-bottom) + 20px);
   width: 56px;
   height: 56px;
   border: none;

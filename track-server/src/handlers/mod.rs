@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod avatars;
 pub mod foods;
 pub mod meal_records;
 pub mod goals;

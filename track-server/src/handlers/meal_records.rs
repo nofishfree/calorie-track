@@ -20,6 +20,9 @@ pub struct MealRecordQuery {
     pub date: Option<String>,
     pub limit: Option<i64>,
     pub offset: Option<i64>,
+    /// 客户端时区偏移（分钟），正数表示 UTC 以东（如 UTC+8 为 480）
+    /// 用于将本地日期范围转换为 UTC 时间范围进行查询
+    pub tz_offset: Option<i32>,
 }
 
 #[derive(FromRow)]
@@ -82,13 +85,12 @@ pub async fn create_meal_record(
 
     let response = row_to_response(row);
 
-    // 记录操作日志
+    // 记录操作日志（data.id 即为实体 ID）
     record_operation(
         &pool,
         auth.user_id,
         "add",
         "record",
-        &response.id.to_string(),
         json!({
             "id": response.id,
             "food_id": response.food_id,
@@ -122,8 +124,10 @@ pub async fn get_meal_records(
         let date = date_str.parse::<chrono::NaiveDate>()
             .map_err(|_| AppError::Validation("日期格式无效".to_string()))?;
 
-        let start_datetime = date.and_hms_opt(0, 0, 0).unwrap().and_utc();
-        let end_datetime = date.and_hms_opt(23, 59, 59).unwrap().and_utc();
+        // 根据客户端时区偏移调整查询范围，使 UTC 查询窗口对齐客户端本地日期
+        let tz_offset = query.tz_offset.unwrap_or(0);
+        let start_datetime = date.and_hms_opt(0, 0, 0).unwrap().and_utc() - Duration::minutes(tz_offset as i64);
+        let end_datetime = date.and_hms_opt(23, 59, 59).unwrap().and_utc() - Duration::minutes(tz_offset as i64);
 
         sqlx::query_as::<_, MealRecordRow>(
             "SELECT id, user_id, food_id, food_data, serving_count, record_time, calories_total, carbs_total, protein_total, fat_total, plan_id, plan_name, plan_items, is_quick_add
@@ -220,13 +224,12 @@ pub async fn update_meal_record(
 
     let response = row_to_response(row);
 
-    // 记录操作日志
+    // 记录操作日志（data.id 即为实体 ID）
     record_operation(
         &pool,
         auth.user_id,
         "update",
         "record",
-        &response.id.to_string(),
         json!({
             "id": response.id,
             "food_id": response.food_id,
@@ -272,14 +275,13 @@ pub async fn delete_meal_record(
         .execute(&pool)
         .await?;
 
-    // 记录操作日志
+    // 记录操作日志（delete 操作通过 data.id 标识被删除的实体）
     record_operation(
         &pool,
         auth.user_id,
         "delete",
         "record",
-        &record_id.to_string(),
-        json!({}),
+        json!({ "id": record_id.to_string() }),
     )
     .await?;
 

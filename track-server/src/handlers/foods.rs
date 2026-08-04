@@ -76,7 +76,6 @@ pub async fn create_food(
         auth.user_id,
         "add",
         "food",
-        &food.id.to_string(),
         json!(food_data),
     )
     .await?;
@@ -196,7 +195,6 @@ pub async fn update_food(
         auth.user_id,
         "update",
         "food",
-        &food.id.to_string(),
         json!(food_data),
     )
     .await?;
@@ -228,14 +226,13 @@ pub async fn delete_food(
         .execute(&pool)
         .await?;
 
-    // 记录操作日志
+    // 记录操作日志（delete 操作通过 data.id 标识被删除的实体）
     record_operation(
         &pool,
         auth.user_id,
         "delete",
         "food",
-        &food_id.to_string(),
-        json!({}),
+        json!({ "id": food_id.to_string() }),
     )
     .await?;
 

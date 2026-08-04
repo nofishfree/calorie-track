@@ -19,7 +19,7 @@ struct UserRow {
     id: Uuid,
     email: String,
     username: Option<String>,
-    avatar_url: Option<String>,
+    avatar_hash: Option<String>,
 }
 
 pub async fn get_user_me(
@@ -27,7 +27,7 @@ pub async fn get_user_me(
     State(pool): State<PgPool>,
 ) -> AppResult<AxumJson<ApiResponse<UserMeResponse>>> {
     let user: Option<UserRow> = sqlx::query_as(
-        "SELECT id, email, username, avatar_url FROM users WHERE id = $1"
+        "SELECT id, email, username, avatar_hash FROM users WHERE id = $1"
     )
     .bind(auth.user_id)
     .fetch_optional(&pool)
@@ -41,7 +41,7 @@ pub async fn get_user_me(
         id: user.id,
         email: user.email,
         username: user.username,
-        avatar: user.avatar_url,
+        avatar: user.avatar_hash,
         data_version,
     };
     Ok(AxumJson(ApiResponse { data: response }))
@@ -55,9 +55,9 @@ pub async fn update_profile(
     let user: Option<UserRow> = sqlx::query_as(
         "UPDATE users
         SET username = COALESCE($1, username),
-            avatar_url = COALESCE($2, avatar_url)
+            avatar_hash = COALESCE($2, avatar_hash)
         WHERE id = $3
-        RETURNING id, email, username, avatar_url"
+        RETURNING id, email, username, avatar_hash"
     )
     .bind(req.username)
     .bind(req.avatar)
@@ -67,18 +67,17 @@ pub async fn update_profile(
 
     let user = user.ok_or_else(|| crate::error::AppError::NotFound("用户不存在".to_string()))?;
 
-    // 记录操作日志
+    // 记录操作日志（data.id 即为实体 ID，avatar 存储哈希值）
     record_operation(
         &pool,
         auth.user_id,
         "update",
         "account",
-        &user.id.to_string(),
         json!({
             "id": user.id,
             "email": &user.email,
             "username": &user.username,
-            "avatar_url": &user.avatar_url,
+            "avatar": &user.avatar_hash,
         }),
     )
     .await?;
@@ -89,7 +88,7 @@ pub async fn update_profile(
         id: user.id,
         email: user.email,
         username: user.username,
-        avatar: user.avatar_url,
+        avatar: user.avatar_hash,
         data_version,
     };
     Ok(AxumJson(ApiResponse { data: response }))

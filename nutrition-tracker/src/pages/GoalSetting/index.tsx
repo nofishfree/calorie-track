@@ -1,6 +1,6 @@
-﻿import { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Toast } from 'antd-mobile'
+import { Toast, Dialog } from 'antd-mobile'
 import { EditSOutline, CloseOutline, CheckOutline } from 'antd-mobile-icons'
 import { useGoalStore } from '../../stores'
 import styles from './index.module.css'
@@ -54,11 +54,12 @@ export default function GoalSettingPage() {
     }
   }
 
-  const handleDelete = (templateId: string) => {
-    if (templates.length <= 1) {
-      Toast.show('至少需要保留一个目标')
-      return
-    }
+  const handleDelete = async (templateId: string) => {
+    const result = await Dialog.confirm({
+      content: '确定删除这个目标吗？',
+    })
+    if (!result) return
+
     deleteTemplate(templateId)
     Toast.show('目标已删除')
     setTemplates(getTemplates())
@@ -85,7 +86,7 @@ export default function GoalSettingPage() {
     <>
       <div className={`${styles.container} goal-setting-page`}>
         <div className={styles.header}>
-          <button className={styles.backBtn} onClick={() => navigate('/profile')}>
+          <button className={styles.backBtn} onClick={() => navigate('/')}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="24" height="24">
               <path d="M19 12H5" />
               <path d="M12 19l-7-7 7-7" />
@@ -133,7 +134,6 @@ export default function GoalSettingPage() {
                     <button
                       className={styles.actionBtn}
                       onClick={() => handleDelete(template.id)}
-                      disabled={templates.length <= 1}
                     >
                       <CloseOutline fontSize={16} />
                     </button>

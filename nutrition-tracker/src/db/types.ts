@@ -1,4 +1,4 @@
-﻿// 本地饮食记录
+// 本地饮食记录
 export interface LocalRecord {
   local_id: string;           // 本地生成的UUID
   user_id: string;            // 记录所属用户ID
@@ -43,6 +43,13 @@ export interface LocalPreference {
   last_modified: number;
 }
 
+// 本地头像存储
+export interface LocalAvatar {
+  hash: string;               // SHA-256 哈希值（64位十六进制）
+  data: string;               // base64 编码的头像数据
+  created_at: number;         // 创建时间戳
+}
+
 // 待同步操作队列
 export interface PendingOperation {
   id: number;                 // 自增ID
@@ -55,7 +62,7 @@ export interface PendingOperation {
 }
 
 // 数据库 schema 版本
-export const DB_VERSION = 1;
+export const DB_VERSION = 2;
 
 // 数据库名称
 export const DB_NAME = 'CalorieTrackerDB';

@@ -1,14 +1,14 @@
-﻿import { useState } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button, Input, Toast } from 'antd-mobile'
 import { useAuthStore } from '../../stores'
-import { authAPI } from '../../api'
+import { authAPI, initUserData } from '../../api'
 import styles from './index.module.css'
 
 export default function AddAccountPage() {
   const navigate = useNavigate()
   const { login } = useAuthStore()
-  
+
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -33,13 +33,19 @@ export default function AddAccountPage() {
       if (response && response.data && response.data.token && response.data.user) {
         console.log('[AddAccount] Using nested data structure')
         login(response.data.token, response.data.user)
-        Toast.show('账号添加成功')
-        navigate('/profile')
+        // 等待初始数据加载完成后再跳转
+        const result = await initUserData(response.data.user.id)
+        // 跳转到今日页
+        navigate('/', { replace: true })
+        Toast.show(result.success ? '账号添加成功' : '账号添加成功，但数据加载不完整')
       } else if (response && response.token && response.user) {
         console.log('[AddAccount] Using direct response structure')
         login(response.token, response.user)
-        Toast.show('账号添加成功')
-        navigate('/profile')
+        // 等待初始数据加载完成后再跳转
+        const result = await initUserData(response.user.id)
+        // 跳转到今日页
+        navigate('/', { replace: true })
+        Toast.show(result.success ? '账号添加成功' : '账号添加成功，但数据加载不完整')
       } else {
         console.error('[AddAccount] Unexpected response structure:', response)
         Toast.show('登录失败，请检查邮箱和密码')

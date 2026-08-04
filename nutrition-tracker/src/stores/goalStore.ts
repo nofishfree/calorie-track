@@ -1,4 +1,4 @@
-﻿import { create } from 'zustand'
+import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { UserGoals, StoredUserGoals, DailyGoal, GoalTemplate } from '../types'
 import { useAuthStore } from './authStore'
@@ -59,6 +59,7 @@ interface GoalState {
   setCurrentTemplate: (templateId: string) => void
   syncTemplates: (templates: GoalTemplate[], currentId: string) => void
   updateTemplateId: (oldId: string, newId: string) => void
+  applyRemoteOperation: (operation_type: string, data: Record<string, unknown>) => void
 }
 
 export const useGoalStore = create<GoalState>()(
@@ -164,18 +165,8 @@ export const useGoalStore = create<GoalState>()(
         const currentId = get().currentTemplateId[accountId]
         const currentTemplate = templates.find(t => t.id === currentId)
 
+        // 没有目标模板时返回默认值，不写入 store
         if (!currentTemplate) {
-          const defaultTemplate = createDefaultTemplate()
-          set((state) => ({
-            templates: {
-              ...state.templates,
-              [accountId]: [defaultTemplate],
-            },
-            currentTemplateId: {
-              ...state.currentTemplateId,
-              [accountId]: defaultTemplate.id,
-            },
-          }))
           return DEFAULT_GOAL
         }
 
@@ -263,22 +254,7 @@ export const useGoalStore = create<GoalState>()(
       getTemplates: () => {
         const { currentAccountId, isLocalAccount } = useAuthStore.getState()
         const accountId = isLocalAccount ? LOCAL_ACCOUNT_ID : (currentAccountId || LOCAL_ACCOUNT_ID)
-        let templates = get().templates[accountId] || []
-        
-        if (templates.length === 0) {
-          const defaultTemplate = createDefaultTemplate()
-          set((state) => ({
-            templates: {
-              ...state.templates,
-              [accountId]: [defaultTemplate],
-            },
-            currentTemplateId: {
-              ...state.currentTemplateId,
-              [accountId]: defaultTemplate.id,
-            },
-          }))
-          templates = [defaultTemplate]
-        }
+        const templates = get().templates[accountId] || []
 
         return templates.map(t => ({
           ...t,
@@ -301,7 +277,7 @@ export const useGoalStore = create<GoalState>()(
             [accountId]: [...templates, newTemplate],
           },
         }))
-        useOperationStore.getState().addOperation('goal', newTemplate.id, newTemplate)
+        useOperationStore.getState().addOperation('goal', newTemplate)
         return newTemplate
       },
 
@@ -315,19 +291,19 @@ export const useGoalStore = create<GoalState>()(
             [accountId]: templates.map(t => t.id === template.id ? template : t),
           },
         }))
-        useOperationStore.getState().addOperation('goal', template.id, template, 'update')
+        useOperationStore.getState().addOperation('goal', template, 'update')
       },
 
       deleteTemplate: (templateId) => {
         const { currentAccountId } = useAuthStore.getState()
         const accountId = currentAccountId || LOCAL_ACCOUNT_ID
         let templates = get().templates[accountId] || []
-        
-        if (templates.length <= 1) return
 
         const deletedTemplate = templates.find(t => t.id === templateId)
+        if (!deletedTemplate) return
+
         templates = templates.filter(t => t.id !== templateId)
-        
+
         let newCurrentId = get().currentTemplateId[accountId]
         if (newCurrentId === templateId) {
           newCurrentId = templates[0]?.id || ''
@@ -343,8 +319,8 @@ export const useGoalStore = create<GoalState>()(
             [accountId]: newCurrentId,
           },
         }))
-        
-        useOperationStore.getState().deleteOperation('goal', templateId, deletedTemplate)
+
+        useOperationStore.getState().deleteOperation('goal', deletedTemplate)
       },
 
       setCurrentTemplate: (templateId) => {
@@ -396,6 +372,42 @@ export const useGoalStore = create<GoalState>()(
             [accountId]: currentId === oldId ? newId : currentId,
           },
         }))
+      },
+
+      applyRemoteOperation: (operation_type, data) => {
+        const { currentAccountId } = useAuthStore.getState()
+        const accountId = currentAccountId || LOCAL_ACCOUNT_ID
+        const id = data.id as string
+
+        if (operation_type === 'delete') {
+          set((state) => ({
+            templates: {
+              ...state.templates,
+              [accountId]: (state.templates[accountId] || []).filter(t => t.id !== id),
+            },
+          }))
+        } else {
+          // add 或 update 均为 upsert，不创建新操作
+          const templateData = data as unknown as GoalTemplate
+          set((state) => {
+            const templates = state.templates[accountId] || []
+            const exists = templates.some(t => t.id === id)
+            if (exists) {
+              return {
+                templates: {
+                  ...state.templates,
+                  [accountId]: templates.map(t => t.id === id ? { ...t, ...templateData } : t),
+                },
+              }
+            }
+            return {
+              templates: {
+                ...state.templates,
+                [accountId]: [...templates, templateData],
+              },
+            }
+          })
+        }
       },
     }),
     {

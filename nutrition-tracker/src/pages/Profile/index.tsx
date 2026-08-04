@@ -1,9 +1,9 @@
-﻿import { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { List, Dialog, Toast, Popup } from 'antd-mobile'
-import { useAuthStore, useThemeStore, useFoodStore, useRecordStore, useGoalStore, useOperationStore } from '../../stores'
-import { userAPI, foodsAPI, goalTemplatesAPI, authAPI } from '../../api'
-import type { Food, GoalTemplate } from '../../types'
+import { useAuthStore, useThemeStore, useOperationStore } from '../../stores'
+import { userAPI, authAPI } from '../../api'
+import { AvatarDisplay } from '../../components'
 import styles from './index.module.css'
 
 const LOCAL_ACCOUNT_ID = 'local-account'
@@ -26,72 +26,12 @@ export default function ProfilePage() {
   const [newOperation, setNewOperation] = useState({
     operation_type: 'add' as const,
     entity_type: 'food' as const,
-    entity_id: '',
     data: '{}',
   })
   const navigate = useNavigate()
   const { user, isLoggedIn, isLocalAccount, logout, savedAccounts, currentAccountId, switchToAccount, removeSavedAccount } = useAuthStore()
   const { getQueue, removeOperation, addOperation } = useOperationStore()
   const { mode, setMode } = useThemeStore()
-  const { clearFoods } = useFoodStore()
-  const { clearRecords } = useRecordStore()
-
-  // 进入"我的"页时异步获取当前账号信息、目标设置、食物库（不阻塞界面）
-  useEffect(() => {
-    if (isLocalAccount) return
-
-    // 获取账号信息
-    userAPI.getMe()
-      .then((res) => {
-        const data = res.data
-        if (data) {
-          useAuthStore.getState().updateUser({
-            email: data.email,
-            username: data.username || undefined,
-            avatar: data.avatar || undefined,
-            data_version: data.data_version,
-          })
-        }
-      })
-      .catch((err) => console.error('Failed to fetch user info:', err))
-
-    // 获取目标模板列表
-    goalTemplatesAPI.getAll()
-      .then((res) => {
-        const serverTemplates = res.data || []
-        if (serverTemplates.length === 0) return
-
-        // 将服务器模板转换为本地 GoalTemplate 格式
-        const templates: GoalTemplate[] = serverTemplates.map(t => ({
-          id: t.id,
-          name: t.name,
-          type: t.type,
-          cycle_days: t.cycle_days,
-          today_index: t.today_index,
-          daily_goals: t.daily_goals,
-          is_current: t.is_current,
-          last_active_date: t.last_active_date || undefined,
-        }))
-
-        // 找到当前模板
-        const currentTemplate = templates.find(t => t.is_current) || templates[0]
-
-        useGoalStore.getState().syncTemplates(templates, currentTemplate.id)
-      })
-      .catch((err) => console.error('Failed to fetch goal templates:', err))
-
-    // 获取当前账号食物库
-    foodsAPI.getFoods()
-      .then((res) => {
-        const serverFoods = res.data || []
-        const mappedFoods: Food[] = serverFoods.map(f => ({
-          ...f,
-          user_id: f.user_id ?? undefined,
-        }))
-        useFoodStore.getState().setFoods(mappedFoods)
-      })
-      .catch((err) => console.error('Failed to fetch foods:', err))
-  }, [isLocalAccount])
 
   const getThemeLabel = () => {
     const labels = {
@@ -114,8 +54,6 @@ export default function ProfilePage() {
       await userAPI.deleteAccount()
       removeSavedAccount(user?.id || '')
       logout()
-      clearFoods()
-      clearRecords()
       Toast.show('账号已注销')
       setShowDeleteConfirm(false)
     } catch (error) {
@@ -258,13 +196,12 @@ export default function ProfilePage() {
   const handleSaveEdit = () => {
     if (!editingOperation) return
     try {
-      JSON.parse(editingOperation.data)
+      const parsedData = JSON.parse(editingOperation.data)
       const userId = isLocalAccount ? LOCAL_ACCOUNT_ID : (currentAccountId || LOCAL_ACCOUNT_ID)
       removeOperation(userId, editingOperation.id)
       addOperation(
         editingOperation.entity_type,
-        editingOperation.entity_id,
-        JSON.parse(editingOperation.data),
+        parsedData,
         editingOperation.operation_type
       )
       loadOperations()
@@ -278,13 +215,12 @@ export default function ProfilePage() {
   const handleAddOperation = () => {
     try {
       const data = JSON.parse(newOperation.data)
-      addOperation(newOperation.entity_type, newOperation.entity_id || Date.now().toString(), data, newOperation.operation_type)
+      addOperation(newOperation.entity_type, data, newOperation.operation_type)
       loadOperations()
       setShowAddOperation(false)
       setNewOperation({
         operation_type: 'add' as const,
         entity_type: 'food' as const,
-        entity_id: '',
         data: '{}',
       })
       Toast.show('已添加')
@@ -301,15 +237,7 @@ export default function ProfilePage() {
           onClick={() => navigate('/account-info')}
           style={{ cursor: 'pointer' }}
         >
-          <div className={styles.avatar}>
-            {user?.avatar ? (
-              <img src={user.avatar} alt="头像" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
-            ) : (
-              <svg viewBox="0 0 24 24" fill="currentColor" width="40" height="40">
-                <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
-              </svg>
-            )}
-          </div>
+          <AvatarDisplay hash={user?.avatar} size={48} className={styles.avatar} />
           <div className={styles.userDetail}>
             <span className={styles.email}>{user?.username || user?.email}</span>
             {isLocalAccount && <span className={styles.localTag}>本地账号</span>}
@@ -553,7 +481,12 @@ export default function ProfilePage() {
         }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <h3 className={styles.popupTitle}>操作队列</h3>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <h3 className={styles.popupTitle}>操作队列</h3>
+            <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>
+              数据版本: {user?.data_version ?? 0}
+            </span>
+          </div>
           <button
             className={styles.addOperationBtn}
             onClick={() => setShowAddOperation(true)}
@@ -599,15 +532,6 @@ export default function ProfilePage() {
                       </select>
                     </div>
                     <div className={styles.editorRow}>
-                      <span className={styles.editorLabel}>实体ID</span>
-                      <input
-                        type="text"
-                        value={editingOperation.entity_id}
-                        onChange={(e) => setEditingOperation({ ...editingOperation, entity_id: e.target.value })}
-                        className={styles.editorInput}
-                      />
-                    </div>
-                    <div className={styles.editorRow}>
                       <span className={styles.editorLabel}>数据(JSON)</span>
                       <textarea
                         value={editingOperation.data}
@@ -639,7 +563,7 @@ export default function ProfilePage() {
                         {op.operation_type}
                       </span>
                       <span className={styles.operationEntity}>{op.entity_type}</span>
-                      <span className={styles.operationId}>{op.entity_id}</span>
+                      <span className={styles.operationId}>{op.id}</span>
                     </div>
                     <pre className={styles.operationData}>{JSON.stringify(op.data, null, 2)}</pre>
                     <div className={styles.operationFooter}>
@@ -697,23 +621,13 @@ export default function ProfilePage() {
             </select>
           </div>
           <div className={styles.editorRow}>
-            <span className={styles.editorLabel}>实体ID</span>
-            <input
-              type="text"
-              value={newOperation.entity_id}
-              onChange={(e) => setNewOperation({ ...newOperation, entity_id: e.target.value })}
-              className={styles.editorInput}
-              placeholder="可选，自动生成"
-            />
-          </div>
-          <div className={styles.editorRow}>
             <span className={styles.editorLabel}>数据(JSON)</span>
             <textarea
               value={newOperation.data}
               onChange={(e) => setNewOperation({ ...newOperation, data: e.target.value })}
               className={styles.editorTextarea}
               rows={6}
-              placeholder="输入 JSON 数据"
+              placeholder="输入 JSON 数据（需包含 id 字段）"
             />
           </div>
           <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>

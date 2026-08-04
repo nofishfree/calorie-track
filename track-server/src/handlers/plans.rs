@@ -148,14 +148,13 @@ pub async fn create_plan(
 
     tx.commit().await?;
 
-    // 记录操作日志
+    // 记录操作日志（data.id 即为实体 ID）
     let plan_response = get_plan_inner(&pool, auth.user_id, plan_id).await?;
     record_operation(
         &pool,
         auth.user_id,
         "add",
         "plan",
-        &plan_id.to_string(),
         json!(plan_response),
     )
     .await?;
@@ -218,14 +217,13 @@ pub async fn update_plan(
 
     tx.commit().await?;
 
-    // 记录操作日志
+    // 记录操作日志（data.id 即为实体 ID）
     let plan_response = get_plan_inner(&pool, auth.user_id, plan_id).await?;
     record_operation(
         &pool,
         auth.user_id,
         "update",
         "plan",
-        &plan_id.to_string(),
         json!(plan_response),
     )
     .await?;
@@ -253,14 +251,13 @@ pub async fn delete_plan(
         .execute(&pool)
         .await?;
 
-    // 记录操作日志
+    // 记录操作日志（delete 操作通过 data.id 标识被删除的实体）
     record_operation(
         &pool,
         auth.user_id,
         "delete",
         "plan",
-        &plan_id.to_string(),
-        json!({}),
+        json!({ "id": plan_id.to_string() }),
     )
     .await?;
 

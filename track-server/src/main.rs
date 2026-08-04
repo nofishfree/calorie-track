@@ -18,6 +18,7 @@ mod handlers;
 
 use handlers::{
     auth::{register, login, forgot_password, reset_password, change_password},
+    avatars::{get_avatar, upload_avatar, check_avatar},
     foods::{create_food, get_foods, get_food, update_food, delete_food},
     meal_records::{create_meal_record, get_meal_records, update_meal_record, delete_meal_record},
     goals::{
@@ -86,6 +87,9 @@ async fn main() -> anyhow::Result<()> {
     let protected_routes = Router::new()
         .route("/api/auth/change-password", post(change_password))
         .route("/api/user/me", get(get_user_me).put(update_profile).delete(delete_user_me))
+        .route("/api/avatars/:hash", get(get_avatar))
+        .route("/api/avatars/check/:hash", get(check_avatar))
+        .route("/api/avatars", post(upload_avatar))
         .route("/api/foods", post(create_food).get(get_foods))
         .route("/api/foods/:id", get(get_food).put(update_food).delete(delete_food))
         .route("/api/records", post(create_meal_record).get(get_meal_records))

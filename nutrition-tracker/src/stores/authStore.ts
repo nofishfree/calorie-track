@@ -73,17 +73,48 @@ export const useAuthStore = create<AuthState>()(
       },
 
       logout: () => {
-        // 停止轮询同步（异步执行以避免循环依赖问题）
+        const { currentAccountId, isLocalAccount, savedAccounts } = get()
+        const accountId = isLocalAccount ? LOCAL_ACCOUNT_ID : (currentAccountId || LOCAL_ACCOUNT_ID)
+
+        // 停止轮询同步 + 清除所有缓存数据
         Promise.resolve().then(async () => {
           try {
             const { useOperationStore } = await import('./operationStore')
+            const { useFoodStore } = await import('./foodStore')
+            const { useRecordStore } = await import('./recordStore')
+            const { usePlanStore } = await import('./planStore')
+            const { useGoalStore } = await import('./goalStore')
+            const { clearUserData } = await import('../db/db')
+
+            // 清除内存数据（仅清除当前账号的数据，保留其他账号）
+            useFoodStore.getState().clearFoodsForAccount(accountId)
+            useRecordStore.getState().clearRecordsForAccount(accountId)
+            usePlanStore.getState().clearPlansForAccount(accountId)
+            useOperationStore.getState().clearQueue()
+
+            // 清除目标模板
+            useGoalStore.setState((state) => ({
+              templates: {
+                ...state.templates,
+                [accountId]: [],
+              },
+              currentTemplateId: {
+                ...state.currentTemplateId,
+                [accountId]: '',
+              },
+            }))
+
+            // 清除 IndexedDB 缓存
+            if (accountId !== LOCAL_ACCOUNT_ID) {
+              await clearUserData(accountId)
+            }
+
             useOperationStore.getState().stopPolling()
-          } catch {
-            // ignore if module not available
+          } catch (e) {
+            console.error('[logout] Failed to clear cache:', e)
           }
         })
 
-        const { savedAccounts, currentAccountId } = get()
         if (currentAccountId && currentAccountId !== LOCAL_ACCOUNT_ID) {
           const updatedAccounts = savedAccounts.filter(a => a.user.id !== currentAccountId)
           set({

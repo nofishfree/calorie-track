@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { useAuthStore } from './authStore'
 import { syncAPI } from '../api'
-import type { VersionedSyncRequest, VersionedSyncResponse, SyncOperationRequest, OperationLog } from '../types'
+import type { VersionedSyncRequest, SyncOperationRequest } from '../types'
 
 const LOCAL_ACCOUNT_ID = 'local-account'
 
@@ -13,7 +13,6 @@ export interface OperationItem {
   id: string
   operation_type: OperationType
   entity_type: EntityType
-  entity_id: string
   data: any
   created_at: string
 }
@@ -22,18 +21,17 @@ interface OperationState {
   queues: Record<string, OperationItem[]>
   isSyncing: boolean
   pollingTimer: ReturnType<typeof setInterval> | null
-  addOperation: (entity_type: EntityType, entity_id: string, data: any, operation_type?: OperationType) => void
-  deleteOperation: (entity_type: EntityType, entity_id: string, data?: any) => void
+  addOperation: (entity_type: EntityType, data: any, operation_type?: OperationType) => void
+  deleteOperation: (entity_type: EntityType, data: any) => void
   getQueue: (userId?: string) => OperationItem[]
   clearQueue: (userId?: string) => void
   removeOperation: (userId: string, operationId: string) => void
   startPolling: () => void
   stopPolling: () => void
   performSync: () => Promise<void>
-  updateEntityId: (entityType: EntityType, oldId: string, newId: string, userId?: string) => void
 }
 
-const generateId = () => Math.random().toString(36).substring(2, 15) + Date.now().toString(36)
+const generateId = (): string => crypto.randomUUID()
 
 export const useOperationStore = create<OperationState>()(
   persist(
@@ -42,7 +40,7 @@ export const useOperationStore = create<OperationState>()(
       isSyncing: false,
       pollingTimer: null,
 
-      addOperation: (entity_type, entity_id, data, operation_type = 'add') => {
+      addOperation: (entity_type, data, operation_type = 'add') => {
         const { currentAccountId, isLocalAccount } = useAuthStore.getState()
         const userId = isLocalAccount ? LOCAL_ACCOUNT_ID : (currentAccountId || LOCAL_ACCOUNT_ID)
 
@@ -50,7 +48,6 @@ export const useOperationStore = create<OperationState>()(
           id: generateId(),
           operation_type,
           entity_type,
-          entity_id,
           data,
           created_at: new Date().toISOString(),
         }
@@ -66,7 +63,7 @@ export const useOperationStore = create<OperationState>()(
         })
       },
 
-      deleteOperation: (entity_type, entity_id, data = {}) => {
+      deleteOperation: (entity_type, data) => {
         const { currentAccountId, isLocalAccount } = useAuthStore.getState()
         const userId = isLocalAccount ? LOCAL_ACCOUNT_ID : (currentAccountId || LOCAL_ACCOUNT_ID)
 
@@ -74,7 +71,6 @@ export const useOperationStore = create<OperationState>()(
           id: generateId(),
           operation_type: 'delete',
           entity_type,
-          entity_id,
           data,
           created_at: new Date().toISOString(),
         }
@@ -122,6 +118,12 @@ export const useOperationStore = create<OperationState>()(
           return
         }
 
+        // 仅在已登录且非本地账号时启动
+        const { currentAccountId, isLocalAccount } = useAuthStore.getState()
+        if (isLocalAccount || !currentAccountId || currentAccountId === LOCAL_ACCOUNT_ID) {
+          return
+        }
+
         const timer = setInterval(() => {
           const { isLoggedIn, isLocalAccount } = useAuthStore.getState()
           // 仅在已登录且非本地账号时轮询
@@ -160,9 +162,9 @@ export const useOperationStore = create<OperationState>()(
         if (queue.length > 0) {
           const head = queue[0]
           headOperation = {
+            id: head.id,
             operation_type: head.operation_type,
             entity_type: head.entity_type,
-            entity_id: head.entity_id,
             data: head.data,
           }
           headOperationId = head.id
@@ -178,7 +180,25 @@ export const useOperationStore = create<OperationState>()(
 
           const response = await syncAPI.versionedSync(request)
 
-          // 处理队头操作结果
+          // 如果头像哈希值不存在于数据库，需要先上传头像
+          if (response.missing_avatar_hash) {
+            const { avatarStore } = await import('./avatarStore')
+            const avatarHash = response.missing_avatar_hash
+            const avatarData = await avatarStore.getAvatar(avatarHash)
+            if (avatarData) {
+              // 上传头像到服务器
+              const success = await avatarStore.uploadAvatarToServer(avatarHash, avatarData)
+              if (!success) {
+                console.error('Failed to upload avatar:', avatarHash)
+              }
+              // 无论上传成功与否，都让下次轮询重试（不删除操作）
+            }
+            // 不处理操作，等待下次轮询重试
+            set({ isSyncing: false })
+            return
+          }
+
+          // 仅当后端确认操作已记录在日志中时，才从队列中移除
           if (response.head_processed && headOperationId) {
             get().removeOperation(targetUserId, headOperationId)
           }
@@ -188,20 +208,44 @@ export const useOperationStore = create<OperationState>()(
             useAuthStore.getState().updateDataVersion(response.server_version)
           }
 
-          // 处理增量同步数据
+          // 处理增量同步数据：将服务器返回的操作应用到本地 store
           if (response.operations && response.operations.length > 0) {
-            const currentQueue = get().queues[targetUserId] || []
-            const headEntityId = currentQueue.length > 0 ? currentQueue[0].entity_id : null
+            // 动态导入各 store（避免循环依赖）
+            const { useFoodStore } = await import('./foodStore')
+            const { useRecordStore } = await import('./recordStore')
+            const { usePlanStore } = await import('./planStore')
+            const { useGoalStore } = await import('./goalStore')
 
             for (const op of response.operations) {
-              // 如果是队头操作，跳过同步（已上传）
-              if (headEntityId && op.entity_id === headEntityId && response.head_processed) {
+              // 如果是队头操作且已处理，跳过（避免重复应用，基于操作 ID 判断）
+              if (headOperationId && op.id === headOperationId && response.head_processed) {
                 continue
               }
-              // 其他操作需要应用到本地
-              // 注意：这里只更新 data_version，实际数据同步由具体实体的 API 处理
-              // 因为我们使用的是独立的实体 API（如 foodsAPI、recordsAPI）
-              // 所以服务器返回的操作日志主要用于版本控制
+
+              // 根据实体类型分发到对应的 store
+              const data = op.data as Record<string, unknown>
+              switch (op.entity_type) {
+                case 'food':
+                  useFoodStore.getState().applyRemoteOperation(op.operation_type, data)
+                  break
+                case 'record':
+                  useRecordStore.getState().applyRemoteOperation(op.operation_type, data)
+                  break
+                case 'plan':
+                  usePlanStore.getState().applyRemoteOperation(op.operation_type, data)
+                  break
+                case 'goal':
+                  useGoalStore.getState().applyRemoteOperation(op.operation_type, data)
+                  break
+                case 'account':
+                  if (op.operation_type === 'update') {
+                    useAuthStore.getState().updateUser({
+                      username: data.username as string | undefined,
+                      avatar: data.avatar as string | undefined,
+                    })
+                  }
+                  break
+              }
             }
           }
         } catch (error) {
@@ -210,28 +254,13 @@ export const useOperationStore = create<OperationState>()(
           set({ isSyncing: false })
         }
       },
-
-      updateEntityId: (entityType, oldId, newId, userId) => {
-        const { currentAccountId, isLocalAccount } = useAuthStore.getState()
-        const targetUserId = userId || (isLocalAccount ? LOCAL_ACCOUNT_ID : (currentAccountId || LOCAL_ACCOUNT_ID))
-
-        set((state) => {
-          const currentQueue = state.queues[targetUserId] || []
-          return {
-            queues: {
-              ...state.queues,
-              [targetUserId]: currentQueue.map(op =>
-                op.entity_type === entityType && op.entity_id === oldId
-                  ? { ...op, entity_id: newId }
-                  : op
-              ),
-            },
-          }
-        })
-      },
     }),
     {
       name: 'operation-queue-storage',
+      partialize: (state) => ({
+        // 只持久化队列数据，不持久化 timer 和同步状态
+        queues: state.queues,
+      }),
     }
   )
 )

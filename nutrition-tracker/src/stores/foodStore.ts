@@ -1,4 +1,4 @@
-﻿import { create } from 'zustand'
+import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { Food } from '../types'
 import { useAuthStore } from './authStore'
@@ -29,6 +29,8 @@ interface FoodState {
   removeFoodFromAccount: (foodId: string, userId?: string) => void
   getSavedFoodsForAccount: (userId?: string) => Food[]
   clearFoods: () => void
+  clearFoodsForAccount: (accountId: string) => void
+  applyRemoteOperation: (operation_type: string, data: Record<string, unknown>) => void
   markFoodAsNew: (foodId: string) => void
   clearNewFoods: () => void
   markFoodAsModified: (foodId: string) => void
@@ -59,7 +61,7 @@ export const useFoodStore = create<FoodState>()(
             },
           }
         })
-        useOperationStore.getState().addOperation('food', food.id, foodWithUserId)
+        useOperationStore.getState().addOperation('food', foodWithUserId)
       },
       
       updateFood: (id, food) => {
@@ -108,7 +110,7 @@ export const useFoodStore = create<FoodState>()(
         })
         
         if (updatedFoodData) {
-          useOperationStore.getState().addOperation('food', targetId, updatedFoodData, 'update')
+          useOperationStore.getState().addOperation('food', updatedFoodData, 'update')
         }
       },
       
@@ -117,7 +119,7 @@ export const useFoodStore = create<FoodState>()(
         set((state) => ({
           foods: state.foods.filter((f) => f.id !== id),
         }))
-        useOperationStore.getState().deleteOperation('food', id, food)
+        useOperationStore.getState().deleteOperation('food', food)
       },
       
       setFoods: (foods) => {
@@ -188,6 +190,47 @@ export const useFoodStore = create<FoodState>()(
       
       clearFoods: () => {
         set({ foods: [] })
+      },
+
+      clearFoodsForAccount: (accountId) => {
+        set((state) => {
+          // 仅移除该账号的食物，保留其他账号的数据
+          const remainingFoods = state.foods.filter(f => f.user_id !== accountId)
+          // 清除该账号的使用次数和上次份量记录
+          const remainingUsageCounts: Record<string, number> = {}
+          const remainingLastUsedServings: Record<string, number> = {}
+          for (const [key, val] of Object.entries(state.foodUsageCounts)) {
+            if (!key.endsWith(`:${accountId}`)) remainingUsageCounts[key] = val
+          }
+          for (const [key, val] of Object.entries(state.lastUsedServings)) {
+            if (!key.endsWith(`:${accountId}`)) remainingLastUsedServings[key] = val
+          }
+          // 清除该账号的已保存食物ID
+          const { [accountId]: _removed, ...remainingSavedFoodIds } = state.savedFoodIds
+          return {
+            foods: remainingFoods,
+            foodUsageCounts: remainingUsageCounts,
+            lastUsedServings: remainingLastUsedServings,
+            savedFoodIds: remainingSavedFoodIds,
+          }
+        })
+      },
+
+      applyRemoteOperation: (operation_type, data) => {
+        const id = data.id as string
+        if (operation_type === 'delete') {
+          set((state) => ({ foods: state.foods.filter(f => f.id !== id) }))
+        } else {
+          // add 或 update 均为 upsert，不创建新操作
+          const foodData = data as unknown as Food
+          set((state) => {
+            const exists = state.foods.some(f => f.id === id)
+            if (exists) {
+              return { foods: state.foods.map(f => f.id === id ? { ...f, ...foodData } : f) }
+            }
+            return { foods: [...state.foods, foodData] }
+          })
+        }
       },
 
       isFoodSaved: (foodId, userId) => {

@@ -19,7 +19,7 @@ struct UserRow {
     email: String,
     password_hash: String,
     username: Option<String>,
-    avatar_url: Option<String>,
+    avatar_hash: Option<String>,
     is_admin: bool,
     created_at: chrono::DateTime<chrono::Utc>,
 }
@@ -60,7 +60,7 @@ pub async fn register(
     let user: UserRow = sqlx::query_as(
         "INSERT INTO users (id, email, password_hash, username, created_at)
         VALUES ($1, $2, $3, $4, $5)
-        RETURNING id, email, password_hash, username, avatar_url, is_admin, created_at"
+        RETURNING id, email, password_hash, username, avatar_hash, is_admin, created_at"
     )
     .bind(user_id)
     .bind(&req.email)
@@ -81,7 +81,7 @@ pub async fn register(
         id: user.id,
         email: user.email,
         username: user.username,
-        avatar: user.avatar_url,
+        avatar: user.avatar_hash,
         is_admin: user.is_admin,
         created_at: user.created_at,
         data_version,
@@ -101,7 +101,7 @@ pub async fn login(
 ) -> AppResult<Json<ApiResponse<LoginResponse>>> {
     // 查找用户
     let user: Option<UserRow> = sqlx::query_as(
-        "SELECT id, email, password_hash, username, avatar_url, is_admin, created_at
+        "SELECT id, email, password_hash, username, avatar_hash, is_admin, created_at
          FROM users WHERE email = $1"
     )
     .bind(&req.email)
@@ -127,7 +127,7 @@ pub async fn login(
         id: user.id,
         email: user.email,
         username: user.username,
-        avatar: user.avatar_url,
+        avatar: user.avatar_hash,
         is_admin: user.is_admin,
         created_at: user.created_at,
         data_version,

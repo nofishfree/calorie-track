@@ -1,4 +1,4 @@
-﻿import { create } from 'zustand'
+import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { MealPlanDetail, PlanItem, Food } from '../types'
 import { useAuthStore } from './authStore'
@@ -39,6 +39,9 @@ interface PlanState {
   clearNewPlans: () => void
   markPlanAsModified: (planId: string) => void
   clearModifiedPlans: () => void
+  clearPlans: () => void
+  clearPlansForAccount: (accountId: string) => void
+  applyRemoteOperation: (operation_type: string, data: Record<string, unknown>) => void
 }
 
 const generateUUID = (): string => {
@@ -65,7 +68,7 @@ export const usePlanStore = create<PlanState>()(
         set((state) => ({
           localPlans: [newPlan, ...state.localPlans],
         }))
-        useOperationStore.getState().addOperation('plan', newPlan.id, newPlan)
+        useOperationStore.getState().addOperation('plan', newPlan)
         return newPlan
       },
 
@@ -109,7 +112,7 @@ export const usePlanStore = create<PlanState>()(
         })
         
         if (updatedPlanData) {
-          useOperationStore.getState().addOperation('plan', targetId, updatedPlanData, 'update')
+          useOperationStore.getState().addOperation('plan', updatedPlanData, 'update')
         }
       },
 
@@ -118,7 +121,7 @@ export const usePlanStore = create<PlanState>()(
         set((state) => ({
           localPlans: state.localPlans.filter((plan) => plan.id !== id),
         }))
-        useOperationStore.getState().deleteOperation('plan', id, plan)
+        useOperationStore.getState().deleteOperation('plan', plan)
       },
 
       getPlanUsageCount: (planId, userId) => {
@@ -194,6 +197,46 @@ export const usePlanStore = create<PlanState>()(
 
       clearModifiedPlans: () => {
         set({ modifiedPlanIds: [] })
+      },
+
+      clearPlans: () => {
+        set({ localPlans: [] })
+      },
+
+      clearPlansForAccount: (accountId) => {
+        set((state) => {
+          // 仅移除该账号的计划，保留其他账号的数据
+          const remainingPlans = state.localPlans.filter(p => p.user_id !== accountId)
+          // 清除该账号的使用次数记录
+          const remainingUsageCounts: Record<string, number> = {}
+          for (const [key, val] of Object.entries(state.planUsageCounts)) {
+            if (!key.endsWith(`:${accountId}`)) remainingUsageCounts[key] = val
+          }
+          // 清除该账号的已保存计划ID
+          const { [accountId]: _removed, ...remainingSavedPlanIds } = state.savedPlanIds
+          return {
+            localPlans: remainingPlans,
+            planUsageCounts: remainingUsageCounts,
+            savedPlanIds: remainingSavedPlanIds,
+          }
+        })
+      },
+
+      applyRemoteOperation: (operation_type, data) => {
+        const id = data.id as string
+        if (operation_type === 'delete') {
+          set((state) => ({ localPlans: state.localPlans.filter(p => p.id !== id) }))
+        } else {
+          // add 或 update 均为 upsert，不创建新操作
+          const planData = data as unknown as LocalMealPlan
+          set((state) => {
+            const exists = state.localPlans.some(p => p.id === id)
+            if (exists) {
+              return { localPlans: state.localPlans.map(p => p.id === id ? { ...p, ...planData } : p) }
+            }
+            return { localPlans: [...state.localPlans, planData] }
+          })
+        }
       },
 
       getLocalPlanDetail: (id) => {
