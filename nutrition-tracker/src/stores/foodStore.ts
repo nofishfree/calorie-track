@@ -68,7 +68,6 @@ export const useFoodStore = create<FoodState>()(
         const { currentAccountId, isLocalAccount } = useAuthStore.getState()
         const userId = isLocalAccount ? LOCAL_ACCOUNT_ID : (currentAccountId || LOCAL_ACCOUNT_ID)
         let updatedFoodData: Food | null = null
-        let targetId = id
         
         set((state) => {
           const existingFood = state.foods.find(f => f.id === id)
@@ -95,7 +94,6 @@ export const useFoodStore = create<FoodState>()(
               user_id: userId,
             }
             updatedFoodData = newFood
-            targetId = newId
             const currentSavedIds = state.savedFoodIds[userId] || []
             const newSavedIds = [...currentSavedIds.filter(savedId => savedId !== id), newId]
             return {

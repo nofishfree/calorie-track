@@ -187,11 +187,7 @@ export const useOperationStore = create<OperationState>()(
             const avatarData = await avatarStore.getAvatar(avatarHash)
             if (avatarData) {
               // 上传头像到服务器
-              const success = await avatarStore.uploadAvatarToServer(avatarHash, avatarData)
-              if (!success) {
-                console.error('Failed to upload avatar:', avatarHash)
-              }
-              // 无论上传成功与否，都让下次轮询重试（不删除操作）
+              await avatarStore.syncAvatarToServer(avatarHash, avatarData)
             }
             // 不处理操作，等待下次轮询重试
             set({ isSyncing: false })

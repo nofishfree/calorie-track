@@ -2,6 +2,12 @@
 .env
 **/.env
 *.local
+*.jks
+sign.bat
+
+# ===== 构建产物 =====
+*.apk
+*.idsig
 
 # ===== 前端 (nutrition-tracker) =====
 node_modules/
@@ -16,7 +22,12 @@ pnpm-debug.log*
 target/
 **/*.rs.bk
 
+# ===== Tauri 客户端 (nutrition-tracker/src-tauri) =====
+nutrition-tracker/src-tauri/target/
+nutrition-tracker/src-tauri/gen/schemas/
+
 # ===== 编辑器 / 系统 =====
+.trae/
 .vscode/*
 !.vscode/extensions.json
 .idea/

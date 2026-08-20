@@ -76,7 +76,6 @@ export const usePlanStore = create<PlanState>()(
         const { currentAccountId, isLocalAccount } = useAuthStore.getState()
         const userId = isLocalAccount ? LOCAL_ACCOUNT_ID : (currentAccountId || LOCAL_ACCOUNT_ID)
         let updatedPlanData: LocalMealPlan | null = null
-        let targetId = id
         
         set((state) => {
           const existingPlan = state.localPlans.find(p => p.id === id)
@@ -103,7 +102,6 @@ export const usePlanStore = create<PlanState>()(
               created_at: new Date().toISOString(),
             }
             updatedPlanData = newPlan
-            targetId = newId
             return {
               localPlans: [...state.localPlans, newPlan],
               modifiedPlanIds: [...state.modifiedPlanIds, newId],

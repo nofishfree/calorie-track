@@ -17,6 +17,13 @@
   --nav-height: 50px;
   --header-height: 44px;
   --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+
+  /* 状态栏适配：优先级 1) Tauri注入 2) CSS safe-area 3) 0 */
+  --status-bar-height: 0px;
+  --safe-area-top: max(env(safe-area-inset-top, 0px), var(--status-bar-height, 0px));
+
+  /* 页面顶部padding = 状态栏高度，避免内容被状态栏遮挡 */
+  --page-top-padding: var(--safe-area-top);
 }
 
 [data-theme='dark'] {
@@ -55,8 +62,17 @@ html, body {
 
 .page-container {
   min-height: 100vh;
+  padding-top: var(--page-top-padding);
   padding-bottom: calc(var(--nav-height) + var(--safe-area-bottom));
   background-color: var(--bg-color);
+  box-sizing: border-box;
+}
+
+/* 给所有根级别页面容器添加顶部适配 */
+#root > div,
+#root > [class*="container"] {
+  padding-top: var(--page-top-padding);
+  box-sizing: border-box;
 }
 
 .card {

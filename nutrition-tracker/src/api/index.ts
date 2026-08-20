@@ -305,6 +305,7 @@ export const syncAPI = {
             const status = error.response?.status
             if (status !== 404 && status !== 400) throw error
           }
+          return
         }
       }
       case 'account':
@@ -342,7 +343,7 @@ export default api
 // 数据初始化工具 - 登录后加载所有必要数据
 export const initUserData = async (userId: string) => {
   const { useFoodStore, useRecordStore, useGoalStore } = await import('../stores')
-  const { getToday, formatDate } = await import('../utils/helpers')
+  const { formatDate } = await import('../utils/helpers')
   const dayjs = (await import('dayjs')).default
 
   try {
@@ -351,14 +352,12 @@ export const initUserData = async (userId: string) => {
     const serverFoods = foodsRes.data || []
     const mappedFoods = serverFoods.map(f => ({
       ...f,
+      calorie_unit: f.calorie_unit as 'kcal' | 'kj',
       user_id: f.user_id ?? undefined,
     }))
     useFoodStore.getState().setFoods(mappedFoods)
 
     // 2. 加载最近7天的记录
-    const today = getToday()
-    const sevenDaysAgo = formatDate(dayjs().subtract(6, 'day').toDate())
-    
     const recordsByDate = useRecordStore.getState()
     const allRecords: any[] = []
 

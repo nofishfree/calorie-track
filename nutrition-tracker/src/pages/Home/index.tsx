@@ -2,12 +2,10 @@ import { useMemo, useState, useRef, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Dialog, Button, Popup, Input, Selector } from 'antd-mobile'
 import { CalorieRing, NutrientCards, RecordCard, AvatarDisplay } from '../../components'
-import { useGoalStore, useAuthStore, useRecordStore, useFoodStore, usePlanStore } from '../../stores'
-import type { Food, MealRecord } from '../../types'
+import { useGoalStore, useAuthStore, useRecordStore, useFoodStore, usePlanStore, useUIStore } from '../../stores'
 import { getToday } from '../../utils/helpers'
 import { generateUUID } from '../../db/db'
 import dayjs from 'dayjs'
-import ProfilePage from '../Profile'
 import styles from './index.module.css'
 
 export default function HomePage() {
@@ -18,7 +16,7 @@ export default function HomePage() {
   const dateInputRef = useRef<HTMLInputElement>(null)
   const goalStore = useGoalStore()
   const goal = goalStore.getGoalForDate(selectedDate)
-  const { currentAccountId, isLocalAccount, user } = useAuthStore()
+  const { currentAccountId, user } = useAuthStore()
   const { records, getRecordsByDate, deleteRecord: deleteRecordFromStore } = useRecordStore()
   const { clearNewFoods } = useFoodStore()
   const { clearNewPlans } = usePlanStore()
@@ -47,7 +45,7 @@ export default function HomePage() {
   const [quickAddCarbs, setQuickAddCarbs] = useState<string>('')
   const [quickAddTime, setQuickAddTime] = useState(dayjs().format('HH:mm'))
   const [quickAddCaloriesUnit, setQuickAddCaloriesUnit] = useState<'kcal' | 'kj'>('kj')
-  const [showProfileDrawer, setShowProfileDrawer] = useState(false)
+  const setShowProfileDrawer = useUIStore(state => state.setShowProfileDrawer)
 
   const todayRecords = useMemo(() => {
     return getRecordsByDate(selectedDate, currentAccountId)
@@ -850,15 +848,6 @@ export default function HomePage() {
         max="2030-12-31"
         className={styles.hiddenDateInput}
       />
-
-      <Popup
-        visible={showProfileDrawer}
-        onMaskClick={() => setShowProfileDrawer(false)}
-        position="left"
-        bodyStyle={{ width: '340px', height: '100%' }}
-      >
-        <ProfilePage />
-      </Popup>
 
     </div>
   )
