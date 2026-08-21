@@ -10,6 +10,24 @@ use uuid::Uuid;
 use crate::error::{AppError, AppResult};
 use crate::models::Claims;
 
+/// JWT 密钥最小长度
+pub const MIN_JWT_SECRET_LEN: usize = 32;
+
+/// 从环境变量读取 JWT 密钥；未配置或过短时报错（不使用默认值）
+pub fn jwt_secret() -> AppResult<String> {
+    let secret = env::var("JWT_SECRET")
+        .map_err(|_| AppError::Config("JWT_SECRET 未配置".to_string()))?;
+
+    if secret.len() < MIN_JWT_SECRET_LEN {
+        return Err(AppError::Config(format!(
+            "JWT_SECRET 长度至少需要 {} 个字符",
+            MIN_JWT_SECRET_LEN
+        )));
+    }
+
+    Ok(secret)
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AuthContext {
     pub user_id: Uuid,
@@ -48,7 +66,7 @@ where
 }
 
 pub fn create_jwt(user_id: Uuid) -> AppResult<String> {
-    let secret = env::var("JWT_SECRET").unwrap_or_else(|_| "default-secret-key".to_string());
+    let secret = jwt_secret()?;
     let expiration = chrono::Utc::now()
         .checked_add_signed(chrono::Duration::days(7))
         .ok_or_else(|| AppError::Internal("计算令牌过期时间失败".to_string()))?
@@ -69,7 +87,7 @@ pub fn create_jwt(user_id: Uuid) -> AppResult<String> {
 }
 
 pub fn decode_jwt(token: &str) -> AppResult<Claims> {
-    let secret = env::var("JWT_SECRET").unwrap_or_else(|_| "default-secret-key".to_string());
+    let secret = jwt_secret()?;
     let token_data = decode::<Claims>(
         token,
         &DecodingKey::from_secret(secret.as_ref()),

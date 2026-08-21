@@ -30,6 +30,9 @@ pub enum AppError {
     #[error("Password hash error: {0}")]
     PasswordHash(#[from] BcryptError),
 
+    #[error("Configuration error: {0}")]
+    Config(String),
+
     #[error("Internal error: {0}")]
     Internal(String),
 }
@@ -52,6 +55,10 @@ impl IntoResponse for AppError {
             AppError::PasswordHash(e) => {
                 tracing::error!("Password hash error: {:?}", e);
                 (StatusCode::INTERNAL_SERVER_ERROR, "密码处理错误".to_string())
+            }
+            AppError::Config(msg) => {
+                tracing::error!("Configuration error: {}", msg);
+                (StatusCode::INTERNAL_SERVER_ERROR, "服务端配置错误".to_string())
             }
             AppError::Internal(msg) => {
                 tracing::error!("Internal error: {}", msg);

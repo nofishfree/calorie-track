@@ -1,11 +1,13 @@
 use axum::{
+    extract::DefaultBodyLimit,
+    http::{header, HeaderValue, Method},
     routing::{get, post, put},
     Router,
 };
 use std::collections::HashMap;
 use std::env;
 use std::sync::{Arc, Mutex};
-use tower_http::cors::{CorsLayer, Any};
+use tower_http::cors::CorsLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use uuid::Uuid;
 
@@ -14,6 +16,7 @@ mod database;
 mod error;
 mod middleware;
 mod models;
+mod validation;
 mod handlers;
 
 use handlers::{
@@ -31,6 +34,9 @@ use handlers::{
 };
 use crate::models::SyncOperationRequest;
 use middleware::auth_middleware;
+
+/// 请求体上限（头像为 base64 字符串，给出 4MB 余量）
+const MAX_BODY_BYTES: usize = 4 * 1024 * 1024;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -67,7 +73,15 @@ async fn main() -> anyhow::Result<()> {
 
     tracing::info!("Database migrations completed");
 
-    let jwt_secret = env::var("JWT_SECRET").unwrap_or_else(|_| "default-secret-key".to_string());
+    // JWT 密钥必须显式配置：缺少或过弱时直接启动失败，避免回退到可预测的默认值
+    let jwt_secret = auth::jwt_secret().map_err(|e| {
+        anyhow::anyhow!(
+            "{}. Set JWT_SECRET in .env to a random string of at least {} characters, \
+             e.g. `openssl rand -base64 48`",
+            e,
+            auth::MIN_JWT_SECRET_LEN
+        )
+    })?;
 
     let operation_queues: Arc<Mutex<HashMap<Uuid, Vec<SyncOperationRequest>>>> =
         Arc::new(Mutex::new(HashMap::new()));
@@ -110,7 +124,8 @@ async fn main() -> anyhow::Result<()> {
     let app = Router::new()
         .merge(public_routes)
         .merge(protected_routes)
-        .layer(CorsLayer::new().allow_origin(Any).allow_methods(Any).allow_headers(Any))
+        .layer(DefaultBodyLimit::max(MAX_BODY_BYTES))
+        .layer(cors_layer()?)
         .with_state(app_state);
 
     let host = env::var("HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
@@ -127,4 +142,36 @@ async fn main() -> anyhow::Result<()> {
 
 async fn health_check() -> &'static str {
     "OK"
+}
+
+/// 根据 CORS_ALLOWED_ORIGINS 构建白名单（逗号分隔）。
+/// 未配置时仅允许已知前端域名与本地开发源，不再开放给任意站点。
+fn cors_layer() -> anyhow::Result<CorsLayer> {
+    const DEFAULT_ORIGINS: &str =
+        "https://nutrition-tracker.fishfree.fun,http://localhost:5173,http://127.0.0.1:5173";
+
+    let raw = env::var("CORS_ALLOWED_ORIGINS").unwrap_or_else(|_| DEFAULT_ORIGINS.to_string());
+
+    let origins = raw
+        .split(',')
+        .map(str::trim)
+        .filter(|origin| !origin.is_empty())
+        .map(|origin| {
+            HeaderValue::from_str(origin)
+                .map_err(|_| anyhow::anyhow!("Invalid origin in CORS_ALLOWED_ORIGINS: {}", origin))
+        })
+        .collect::<anyhow::Result<Vec<_>>>()?;
+
+    tracing::info!("CORS allowed origins: {:?}", origins);
+
+    Ok(CorsLayer::new()
+        .allow_origin(origins)
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PUT,
+            Method::DELETE,
+            Method::OPTIONS,
+        ])
+        .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE]))
 }
