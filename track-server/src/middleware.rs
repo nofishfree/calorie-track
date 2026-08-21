@@ -49,3 +49,23 @@ pub fn decode_jwt(token: &str, secret: &str) -> Result<Claims, jsonwebtoken::err
 
     Ok(token_data.claims)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::Claims;
+    use jsonwebtoken::{encode, EncodingKey, Header};
+
+    #[test]
+    fn decodes_tokens_with_the_supplied_secret_only() {
+        let user_id = Uuid::new_v4();
+        let token = encode(
+            &Header::default(),
+            &Claims { sub: user_id.to_string(), exp: (chrono::Utc::now() + chrono::Duration::days(7)).timestamp() as usize },
+            &EncodingKey::from_secret(b"middleware-secret"),
+        ).expect("create JWT");
+        let claims = decode_jwt(&token, "middleware-secret").expect("decode JWT");
+        assert_eq!(claims.sub, user_id.to_string());
+        assert!(decode_jwt(&token, "wrong-secret").is_err());
+    }
+}

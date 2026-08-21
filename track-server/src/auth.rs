@@ -78,3 +78,93 @@ pub fn decode_jwt(token: &str) -> AppResult<Claims> {
 
     Ok(token_data.claims)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::{
+        body::Body,
+        http::{header::AUTHORIZATION, Request},
+    };
+    use std::sync::Mutex;
+
+    static JWT_ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    fn with_secret<T>(secret: &str, f: impl FnOnce() -> T) -> T {
+        let _guard = JWT_ENV_LOCK.lock().expect("JWT test lock");
+        let previous = env::var("JWT_SECRET").ok();
+        env::set_var("JWT_SECRET", secret);
+        let result = f();
+        if let Some(previous) = previous {
+            env::set_var("JWT_SECRET", previous);
+        } else {
+            env::remove_var("JWT_SECRET");
+        }
+        result
+    }
+
+    #[test]
+    fn jwt_roundtrip_and_claim_expiry() {
+        with_secret("test-secret", || {
+            let user_id = Uuid::new_v4();
+            let before = chrono::Utc::now().timestamp() as usize;
+            let token = create_jwt(user_id).expect("create JWT");
+            let claims = decode_jwt(&token).expect("decode JWT");
+
+            assert_eq!(claims.sub, user_id.to_string());
+            let expected = before + chrono::Duration::days(7).num_seconds() as usize;
+            assert!((claims.exp as i64 - expected as i64).abs() <= 2);
+        });
+    }
+
+    #[test]
+    fn jwt_rejects_tampered_garbage_and_other_secrets() {
+        with_secret("test-secret", || {
+            let token = create_jwt(Uuid::new_v4()).expect("create JWT");
+            assert!(decode_jwt("not-a-token").is_err());
+            let mut tampered = token.clone();
+            tampered.push('x');
+            assert!(decode_jwt(&tampered).is_err());
+            env::set_var("JWT_SECRET", "different-secret");
+            assert!(decode_jwt(&token).is_err());
+        });
+    }
+
+    #[tokio::test]
+    async fn auth_context_extractor_validates_bearer_and_uuid_subject() {
+        let _guard = JWT_ENV_LOCK.lock().expect("JWT test lock");
+        let previous = env::var("JWT_SECRET").ok();
+        env::set_var("JWT_SECRET", "test-secret");
+        let user_id = Uuid::new_v4();
+        let token = create_jwt(user_id).expect("create JWT");
+
+        for request in [
+            Request::new(Body::empty()),
+            Request::builder().header(AUTHORIZATION, "Basic abc").body(Body::empty()).unwrap(),
+            Request::builder().header(AUTHORIZATION, "Bearer malformed").body(Body::empty()).unwrap(),
+        ] {
+            let (mut parts, _) = request.into_parts();
+            assert!(matches!(
+                <AuthContext as FromRequestParts<()>>::from_request_parts(&mut parts, &()).await,
+                Err(StatusCode::UNAUTHORIZED)
+            ));
+        }
+
+        let request = Request::builder()
+            .header(AUTHORIZATION, format!("Bearer {token}"))
+            .body(Body::empty())
+            .unwrap();
+        let (mut parts, _) = request.into_parts();
+        let context = <AuthContext as FromRequestParts<()>>::from_request_parts(&mut parts, &())
+            .await
+            .expect("valid auth context");
+        assert_eq!(context.user_id, user_id);
+        assert!(!context.is_admin);
+
+        if let Some(previous) = previous {
+            env::set_var("JWT_SECRET", previous);
+        } else {
+            env::remove_var("JWT_SECRET");
+        }
+    }
+}
