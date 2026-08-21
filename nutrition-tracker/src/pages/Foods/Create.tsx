@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { NavBar, Button, Toast, Selector } from 'antd-mobile'
 import { useFoodStore, useAuthStore } from '../../stores'
 import { generateUUID } from '../../db/db'
+import { sanitizeNumberInput, toKcal } from '../../utils/nutrition'
 import styles from './Create.module.css'
 
 interface FormField {
@@ -69,8 +70,7 @@ export default function CreateFoodPage() {
 
     setIsSubmitting(true)
     try {
-      // 千焦转换为千卡：1 kcal = 4.184 kJ
-      const calories = form.caloriesUnit === 'kj' ? caloriesInput / 4.184 : caloriesInput
+      const calories = toKcal(caloriesInput, form.caloriesUnit)
 
       const foodData = {
         name: foodName,
@@ -115,14 +115,7 @@ export default function CreateFoodPage() {
     })
   }
 
-  const validateNumberInput = (val: string): string => {
-    let filtered = val.replace(/[^\d.]/g, '')
-    const parts = filtered.split('.')
-    if (parts.length > 2) {
-      filtered = parts[0] + '.' + parts.slice(1).join('')
-    }
-    return filtered
-  }
+  const validateNumberInput = (val: string): string => sanitizeNumberInput(val)
 
   return (
     <div className={styles.container}>

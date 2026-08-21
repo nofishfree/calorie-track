@@ -1,6 +1,7 @@
 ﻿import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Input } from 'antd-mobile'
+import { sanitizeNumberInput } from '../../utils/nutrition'
 import styles from './index.module.css'
 
 type Gender = 'male' | 'female'
@@ -20,15 +21,7 @@ const ACTIVITY_LEVELS: ActivityLevel[] = [
   { key: 'very_active', name: '非常高度活动', desc: '体力工作或每天训练', multiplier: 1.9 },
 ]
 
-const validateNumberInput = (val: string): string => {
-  if (val === '' || val === null || val === undefined) return ''
-  let filtered = val.replace(/[^\d.]/g, '')
-  const parts = filtered.split('.')
-  if (parts.length > 2) {
-    filtered = parts[0] + '.' + parts.slice(1).join('')
-  }
-  return filtered
-}
+const validateNumberInput = (val: string): string => sanitizeNumberInput(val)
 
 export default function MetabolismPage() {
   const navigate = useNavigate()

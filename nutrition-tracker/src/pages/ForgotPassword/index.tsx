@@ -1,6 +1,7 @@
 ﻿import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button, Input, Toast } from 'antd-mobile'
+import { BackButton } from '../../components'
 import styles from './index.module.css'
 
 export default function ForgotPasswordPage() {
@@ -54,11 +55,7 @@ export default function ForgotPasswordPage() {
 
   return (
     <div className={styles.container}>
-      <button className={styles.backBtn} onClick={handleBack}>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="24" height="24">
-          <path d="M19 12H5M12 19l-7-7 7-7" />
-        </svg>
-      </button>
+      <BackButton className={styles.backBtn} onClick={handleBack} />
 
       <div className={styles.header}>
         <h1 className={styles.title}>忘记密码</h1>
