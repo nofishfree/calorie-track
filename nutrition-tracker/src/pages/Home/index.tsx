@@ -4,6 +4,16 @@ import { Dialog, Button, Popup, Input, Selector, Toast } from 'antd-mobile'
 import { CalorieRing, NutrientCards, RecordCard, AvatarDisplay } from '../../components'
 import { useGoalStore, useAuthStore, useRecordStore, useFoodStore, usePlanStore, useUIStore } from '../../stores'
 import { getToday } from '../../utils/helpers'
+import {
+  fromKcal,
+  nutrientOrZero,
+  parseNutrientInput,
+  sanitizeNumberInput,
+  scaleFoodNutrition,
+  sumFoodPortions,
+  sumRecordNutrition,
+  toKcal,
+} from '../../utils/nutrition'
 import { generateUUID } from '../../db/db'
 import dayjs from 'dayjs'
 import styles from './index.module.css'
@@ -71,12 +81,7 @@ export default function HomePage() {
   }, [goalStore, selectedDate])
 
   const handleQuickAddNumberChange = (setter: (val: string) => void, value: string) => {
-    let filtered = value.replace(/[^\d.]/g, '')
-    const parts = filtered.split('.')
-    if (parts.length > 2) {
-      filtered = parts[0] + '.' + parts.slice(1).join('')
-    }
-    setter(filtered)
+    setter(sanitizeNumberInput(value))
   }
 
   const handleQuickAddNumberBlur = (setter: (val: string) => void, value: string) => {
@@ -91,39 +96,32 @@ export default function HomePage() {
   }
 
   const handleQuickAddConfirm = () => {
-    const parseVal = (val: string): number => {
-      if (val === '' || val === '.') return -1
-      const num = parseFloat(val)
-      return isNaN(num) ? -1 : Math.round(num * 10) / 10
-    }
-
     const record_time = dayjs(`${selectedDate}T${quickAddTime}:00`).toISOString()
     const { addRecord } = useRecordStore.getState()
 
-    // 千焦转换为千卡：1 kcal = 4.184 kJ
-    const caloriesInput = parseVal(quickAddCalories)
-    const caloriesKcal = caloriesInput >= 0 && quickAddCaloriesUnit === 'kj'
-      ? Math.round((caloriesInput / 4.184) * 100) / 100
-      : caloriesInput
+    const caloriesKcal = toKcal(parseNutrientInput(quickAddCalories), quickAddCaloriesUnit)
+    const carbs = parseNutrientInput(quickAddCarbs)
+    const protein = parseNutrientInput(quickAddProtein)
+    const fat = parseNutrientInput(quickAddFat)
 
     addRecord({
       food: {
         id: generateUUID(),
         name: quickAddName.trim(),
         num: 100,
-        calorie: caloriesKcal >= 0 ? caloriesKcal : 0,
+        calorie: nutrientOrZero(caloriesKcal),
         calorie_unit: quickAddCaloriesUnit,
-        carbs_g: parseVal(quickAddCarbs) >= 0 ? parseVal(quickAddCarbs) : 0,
-        protein_g: parseVal(quickAddProtein) >= 0 ? parseVal(quickAddProtein) : 0,
-        fat_g: parseVal(quickAddFat) >= 0 ? parseVal(quickAddFat) : 0,
+        carbs_g: nutrientOrZero(carbs),
+        protein_g: nutrientOrZero(protein),
+        fat_g: nutrientOrZero(fat),
         unit: 'g',
       },
       serving_count: 1,
       record_time,
       calories_total: caloriesKcal,
-      protein_total: parseVal(quickAddProtein),
-      fat_total: parseVal(quickAddFat),
-      carbs_total: parseVal(quickAddCarbs),
+      protein_total: protein,
+      fat_total: fat,
+      carbs_total: carbs,
       is_quick_add: true,
     })
 
@@ -171,11 +169,7 @@ export default function HomePage() {
   }
 
   const handlePlanItemQuantityChange = (foodId: string, value: string) => {
-    let filtered = value.replace(/[^\d.]/g, '')
-    const parts = filtered.split('.')
-    if (parts.length > 2) {
-      filtered = parts[0] + '.' + parts.slice(1).join('')
-    }
+    const filtered = sanitizeNumberInput(value)
     setEditPlanItems(prev => prev.map(item => {
       if (item.food_id !== foodId) return item
       const num = parseFloat(filtered)
@@ -208,7 +202,7 @@ export default function HomePage() {
       setEditQuickAddCaloriesUnit(unit)
       // calories_total 存储的是 kcal，编辑时按原始单位换算回显示值
       const caloriesDisplay = record.calories_total >= 0
-        ? (unit === 'kj' ? Math.round(record.calories_total * 4.184 * 10) / 10 : record.calories_total)
+        ? fromKcal(record.calories_total, unit, 1)
         : -1
       setEditQuickAddCalories(caloriesDisplay >= 0 ? String(caloriesDisplay) : '')
       setEditQuickAddProtein(record.protein_total >= 0 ? String(record.protein_total) : '')
@@ -241,54 +235,29 @@ export default function HomePage() {
       const { updateRecord: updateRecordInStore } = useRecordStore.getState()
 
       if (editingRecord.is_quick_add) {
-        const parseVal = (val: string): number => {
-          if (val === '' || val === '.') return -1
-          const num = parseFloat(val)
-          return isNaN(num) ? -1 : Math.round(num * 10) / 10
-        }
-
-        // 千焦转换为千卡：1 kcal = 4.184 kJ
-        const editCaloriesInput = parseVal(editQuickAddCalories)
-        const editCaloriesKcal = editCaloriesInput >= 0 && editQuickAddCaloriesUnit === 'kj'
-          ? Math.round((editCaloriesInput / 4.184) * 100) / 100
-          : editCaloriesInput
+        const editCaloriesKcal = toKcal(parseNutrientInput(editQuickAddCalories), editQuickAddCaloriesUnit)
+        const editCarbs = parseNutrientInput(editQuickAddCarbs)
+        const editProtein = parseNutrientInput(editQuickAddProtein)
+        const editFat = parseNutrientInput(editQuickAddFat)
 
         updateRecordInStore(editingRecord.id, {
           record_time,
           food: {
             ...editingRecord.food,
             name: editQuickAddName.trim(),
-            calorie: editCaloriesKcal >= 0 ? editCaloriesKcal : 0,
+            calorie: nutrientOrZero(editCaloriesKcal),
             calorie_unit: editQuickAddCaloriesUnit,
-            carbs_g: parseVal(editQuickAddCarbs) >= 0 ? parseVal(editQuickAddCarbs) : 0,
-            protein_g: parseVal(editQuickAddProtein) >= 0 ? parseVal(editQuickAddProtein) : 0,
-            fat_g: parseVal(editQuickAddFat) >= 0 ? parseVal(editQuickAddFat) : 0,
+            carbs_g: nutrientOrZero(editCarbs),
+            protein_g: nutrientOrZero(editProtein),
+            fat_g: nutrientOrZero(editFat),
           },
           calories_total: editCaloriesKcal,
-          protein_total: parseVal(editQuickAddProtein),
-          fat_total: parseVal(editQuickAddFat),
-          carbs_total: parseVal(editQuickAddCarbs),
+          protein_total: editProtein,
+          fat_total: editFat,
+          carbs_total: editCarbs,
         })
       } else if (editingRecord.plan_id && editPlanItems.length > 0) {
-        let calories = 0
-        let protein = 0
-        let fat = 0
-        let carbs = 0
-
-        editPlanItems.forEach(item => {
-          const ratio = item.quantity / item.food.num
-          calories += item.food.calorie * ratio
-          protein += item.food.protein_g * ratio
-          fat += item.food.fat_g * ratio
-          carbs += item.food.carbs_g * ratio
-        })
-
-        const totals = {
-          calories: Math.round(calories * 100) / 100,
-          protein: Math.round(protein * 100) / 100,
-          fat: Math.round(fat * 100) / 100,
-          carbs: Math.round(carbs * 100) / 100,
-        }
+        const totals = sumFoodPortions(editPlanItems)
 
         updateRecordInStore(editingRecord.id, {
           record_time,
@@ -313,18 +282,15 @@ export default function HomePage() {
       } else {
         const food = editingRecord.food
         const newServingRatio = editServingCount / food.num
-        const calories = Math.round(food.calorie * newServingRatio * 100) / 100
-        const protein = Math.round(food.protein_g * newServingRatio * 100) / 100
-        const fat = Math.round(food.fat_g * newServingRatio * 100) / 100
-        const carbs = Math.round(food.carbs_g * newServingRatio * 100) / 100
+        const totals = scaleFoodNutrition(food, editServingCount)
 
         updateRecordInStore(editingRecord.id, {
           record_time,
           serving_count: newServingRatio,
-          calories_total: calories,
-          protein_total: protein,
-          fat_total: fat,
-          carbs_total: carbs,
+          calories_total: totals.calories,
+          protein_total: totals.protein,
+          fat_total: totals.fat,
+          carbs_total: totals.carbs,
         })
       }
 
@@ -336,38 +302,9 @@ export default function HomePage() {
     }
   }
 
-  const nutrition = useMemo(() => {
-    return todayRecords.reduce(
-      (acc, r) => ({
-        calories: acc.calories + (r.calories_total >= 0 ? r.calories_total : 0),
-        protein: acc.protein + (r.protein_total >= 0 ? r.protein_total : 0),
-        carbs: acc.carbs + (r.carbs_total >= 0 ? r.carbs_total : 0),
-        fat: acc.fat + (r.fat_total >= 0 ? r.fat_total : 0),
-      }),
-      { calories: 0, protein: 0, carbs: 0, fat: 0 }
-    )
-  }, [todayRecords])
+  const nutrition = useMemo(() => sumRecordNutrition(todayRecords), [todayRecords])
 
-  const editPlanNutrition = useMemo(() => {
-    if (editPlanItems.length === 0) return { calories: 0, protein: 0, fat: 0, carbs: 0 }
-    let calories = 0
-    let protein = 0
-    let fat = 0
-    let carbs = 0
-    editPlanItems.forEach(item => {
-      const ratio = item.quantity / item.food.num
-      calories += item.food.calorie * ratio
-      protein += item.food.protein_g * ratio
-      fat += item.food.fat_g * ratio
-      carbs += item.food.carbs_g * ratio
-    })
-    return {
-      calories: Math.round(calories * 100) / 100,
-      protein: Math.round(protein * 100) / 100,
-      fat: Math.round(fat * 100) / 100,
-      carbs: Math.round(carbs * 100) / 100,
-    }
-  }, [editPlanItems])
+  const editPlanNutrition = useMemo(() => sumFoodPortions(editPlanItems), [editPlanItems])
 
   const dateText = useMemo(() => {
     const d = dayjs(selectedDate)

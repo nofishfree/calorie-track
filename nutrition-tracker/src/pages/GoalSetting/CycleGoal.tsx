@@ -2,6 +2,7 @@
 import { useNavigate, useParams } from 'react-router-dom'
 import { Input, Toast } from 'antd-mobile'
 import { useGoalStore } from '../../stores'
+import { sanitizeNumberInput } from '../../utils/nutrition'
 import styles from './index.module.css'
 import type { GoalTemplate } from '../../types'
 
@@ -19,19 +20,8 @@ const DEFAULT_DAILY_GOAL = {
   fat_target_g: '65',
 }
 
-const validateNumberInput = (val: string, allowDecimal: boolean = true): string => {
-  if (val === '' || val === null || val === undefined) return ''
-  let filtered = val.replace(/[^\d.]/g, '')
-  if (allowDecimal) {
-    const parts = filtered.split('.')
-    if (parts.length > 2) {
-      filtered = parts[0] + '.' + parts.slice(1).join('')
-    }
-  } else {
-    filtered = filtered.replace(/\./g, '')
-  }
-  return filtered
-}
+const validateNumberInput = (val: string, allowDecimal: boolean = true): string =>
+  sanitizeNumberInput(val, allowDecimal)
 
 type FieldKey = 'calorie_target' | 'carb_target_g' | 'protein_target_g' | 'fat_target_g'
 

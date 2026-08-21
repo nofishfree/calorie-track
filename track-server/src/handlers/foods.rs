@@ -3,7 +3,7 @@ use axum::{
     response::Json,
 };
 use serde::Deserialize;
-use sqlx::{PgPool, FromRow};
+use sqlx::PgPool;
 use uuid::Uuid;
 use serde_json::json;
 
@@ -12,6 +12,7 @@ use crate::error::{AppError, AppResult};
 use crate::models::{
     ApiResponse, CreateFoodRequest, Food, FoodData, UpdateFoodRequest,
 };
+use crate::handlers::common::{ensure_owner, OwnedEntity};
 use crate::handlers::sync::record_operation;
 
 #[derive(Debug, Deserialize)]
@@ -19,27 +20,6 @@ pub struct FoodQuery {
     pub q: Option<String>,
     pub page: Option<i64>,
     pub per_page: Option<i64>,
-}
-
-#[derive(FromRow)]
-struct FoodUserIdRow {
-    user_id: Option<Uuid>,
-}
-
-/// 将 Food 转换为 FoodData JSON
-fn food_to_food_data(food: &Food) -> FoodData {
-    FoodData {
-        id: food.id.to_string(),
-        name: food.name.clone(),
-        num: food.num,
-        calorie: food.calorie,
-        calorie_unit: food.calorie_unit.clone(),
-        carbs_g: food.carbs_g,
-        protein_g: food.protein_g,
-        fat_g: food.fat_g,
-        unit: food.unit.clone(),
-        user_id: food.user_id.map(|u| u.to_string()),
-    }
 }
 
 pub async fn create_food(
@@ -70,7 +50,7 @@ pub async fn create_food(
     .await?;
 
     // 记录操作日志
-    let food_data = food_to_food_data(&food);
+    let food_data = FoodData::from(&food);
     record_operation(
         &pool,
         auth.user_id,
@@ -149,19 +129,7 @@ pub async fn update_food(
     State(pool): State<PgPool>,
     Json(req): Json<UpdateFoodRequest>,
 ) -> AppResult<Json<ApiResponse<Food>>> {
-    // 检查食物是否存在且属于用户
-    let existing_food: Option<FoodUserIdRow> = sqlx::query_as(
-        "SELECT user_id FROM foods WHERE id = $1"
-    )
-    .bind(food_id)
-    .fetch_optional(&pool)
-    .await?;
-
-    let existing_food = existing_food.ok_or_else(|| AppError::NotFound("食物不存在".to_string()))?;
-
-    if existing_food.user_id != Some(auth.user_id) {
-        return Err(AppError::Auth("无权更新此食物".to_string()));
-    }
+    ensure_owner(&pool, OwnedEntity::Food, food_id, auth.user_id, "更新").await?;
 
     let food: Food = sqlx::query_as(
         "UPDATE foods
@@ -189,7 +157,7 @@ pub async fn update_food(
     .await?;
 
     // 记录操作日志
-    let food_data = food_to_food_data(&food);
+    let food_data = FoodData::from(&food);
     record_operation(
         &pool,
         auth.user_id,
@@ -207,19 +175,7 @@ pub async fn delete_food(
     auth: AuthContext,
     State(pool): State<PgPool>,
 ) -> AppResult<Json<crate::models::MessageResponse>> {
-    // 检查食物是否存在且属于用户
-    let existing_food: Option<FoodUserIdRow> = sqlx::query_as(
-        "SELECT user_id FROM foods WHERE id = $1"
-    )
-    .bind(food_id)
-    .fetch_optional(&pool)
-    .await?;
-
-    let existing_food = existing_food.ok_or_else(|| AppError::NotFound("食物不存在".to_string()))?;
-
-    if existing_food.user_id != Some(auth.user_id) {
-        return Err(AppError::Auth("无权删除此食物".to_string()));
-    }
+    ensure_owner(&pool, OwnedEntity::Food, food_id, auth.user_id, "删除").await?;
 
     sqlx::query("DELETE FROM foods WHERE id = $1")
         .bind(food_id)

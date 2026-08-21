@@ -5,6 +5,7 @@ import { useFoodStore, useRecordStore, useAuthStore, usePlanStore } from '../../
 import { getToday, getCurrentTime } from '../../utils/helpers'
 import type { Food, MealPlan, MealPlanDetail, PlanItem } from '../../types'
 import dayjs from 'dayjs'
+import { sanitizeNumberInput, scaleFoodNutrition, sumFoodPortions } from '../../utils/nutrition'
 import { localPlanToApiFormat } from '../../stores/planStore'
 import FoodItemRow from '../../components/FoodItemRow'
 import styles from './index.module.css'
@@ -126,26 +127,10 @@ export default function AddRecordPage() {
   const calculatePlanTotals = useMemo(() => {
     if (!selectedPlan) return { calories: 0, protein: 0, fat: 0, carbs: 0 }
 
-    let calories = 0
-    let protein = 0
-    let fat = 0
-    let carbs = 0
-
-    selectedPlan.items.forEach(item => {
-      const quantity = planItemQuantities[item.food_id] || item.quantity
-      const ratio = quantity / item.food.num
-      calories += item.food.calorie * ratio
-      protein += item.food.protein_g * ratio
-      fat += item.food.fat_g * ratio
-      carbs += item.food.carbs_g * ratio
-    })
-
-    return {
-      calories: Math.round(calories * 100) / 100,
-      protein: Math.round(protein * 100) / 100,
-      fat: Math.round(fat * 100) / 100,
-      carbs: Math.round(carbs * 100) / 100,
-    }
+    return sumFoodPortions(
+      selectedPlan.items,
+      (item) => planItemQuantities[item.food_id] || item.quantity
+    )
   }, [selectedPlan, planItemQuantities])
 
   const handleAddPlanToRecords = async () => {
@@ -309,19 +294,16 @@ export default function AddRecordPage() {
       const record_time = dayjs(`${selectedDate}T${selectedTime}:00`).toISOString()
 
       const ratio = servingCount / selectedFood.num
-      const calories = Math.round(selectedFood.calorie * ratio * 100) / 100
-      const protein = Math.round(selectedFood.protein_g * ratio * 100) / 100
-      const fat = Math.round(selectedFood.fat_g * ratio * 100) / 100
-      const carbs = Math.round(selectedFood.carbs_g * ratio * 100) / 100
+      const totals = scaleFoodNutrition(selectedFood, servingCount)
 
       addRecord({
         food: selectedFood,
         serving_count: ratio,
         record_time,
-        calories_total: calories,
-        carbs_total: carbs,
-        protein_total: protein,
-        fat_total: fat,
+        calories_total: totals.calories,
+        carbs_total: totals.carbs,
+        protein_total: totals.protein,
+        fat_total: totals.fat,
       })
 
       incrementFoodUsage(selectedFood.id)
@@ -501,12 +483,7 @@ export default function AddRecordPage() {
                   }, 0)
                 }}
                 onChange={(val) => {
-                  // 仅允许数字和小数点
-                  let filtered = val.replace(/[^\d.]/g, '')
-                  const parts = filtered.split('.')
-                  if (parts.length > 2) {
-                    filtered = parts[0] + '.' + parts.slice(1).join('')
-                  }
+                  const filtered = sanitizeNumberInput(val)
                   setServingCountStr(filtered)
                   if (servingCountDebounceRef.current) {
                     clearTimeout(servingCountDebounceRef.current)
@@ -631,11 +608,7 @@ export default function AddRecordPage() {
                         }, 0)
                       }}
                       onChange={(val) => {
-                        let filtered = val.replace(/[^\d.]/g, '')
-                        const parts = filtered.split('.')
-                        if (parts.length > 2) {
-                          filtered = parts[0] + '.' + parts.slice(1).join('')
-                        }
+                        const filtered = sanitizeNumberInput(val)
                         setPlanItemQuantityStrs(prev => ({
                           ...prev,
                           [item.food_id]: filtered
