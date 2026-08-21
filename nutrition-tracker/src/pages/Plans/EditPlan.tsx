@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { NavBar, Button, Toast, SearchBar, Input, Popup } from 'antd-mobile'
 import { useFoodStore, usePlanStore, useAuthStore } from '../../stores'
 import type { Food } from '../../types'
+import { sanitizeNumberInput, sumFoodPortions } from '../../utils/nutrition'
 import styles from './EditPlan.module.css'
 
 interface SelectedFood {
@@ -76,27 +77,7 @@ export default function EditPlanPage() {
     )
   }, [keyword, foods])
 
-  const totals = useMemo(() => {
-    let calories = 0
-    let protein = 0
-    let fat = 0
-    let carbs = 0
-
-    selectedFoods.forEach(({ food, quantity }) => {
-      const ratio = quantity / food.num
-      calories += food.calorie * ratio
-      protein += food.protein_g * ratio
-      fat += food.fat_g * ratio
-      carbs += food.carbs_g * ratio
-    })
-
-    return {
-      calories: Math.round(calories * 100) / 100,
-      protein: Math.round(protein * 100) / 100,
-      fat: Math.round(fat * 100) / 100,
-      carbs: Math.round(carbs * 100) / 100,
-    }
-  }, [selectedFoods])
+  const totals = useMemo(() => sumFoodPortions(selectedFoods), [selectedFoods])
 
   const handleAddFood = (food: Food) => {
     const exists = selectedFoods.find((item) => item.food.id === food.id)
@@ -238,11 +219,7 @@ export default function EditPlanPage() {
                     }}
                     onChange={(val) => {
                       const foodId = item.food.id
-                      let filtered = val.replace(/[^\d.]/g, '')
-                      const parts = filtered.split('.')
-                      if (parts.length > 2) {
-                        filtered = parts[0] + '.' + parts.slice(1).join('')
-                      }
+                      const filtered = sanitizeNumberInput(val)
                       setSelectedFoodStrs(prev => {
                         const newStrs = [...prev]
                         newStrs[index] = { food: item.food, quantityStr: filtered }

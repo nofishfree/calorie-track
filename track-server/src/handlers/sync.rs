@@ -9,6 +9,7 @@ use uuid::Uuid;
 
 use crate::auth::AuthContext;
 use crate::error::{AppError, AppResult};
+use crate::handlers::common::{INSERT_PLAN_ITEM_SQL, VALID_ENTITY_TYPES, VALID_OPERATION_TYPES};
 use crate::models::{
     ApiResponse, OperationLog, SyncChangesQuery, SyncChangesResponse,
     SyncOperationRequest, SyncOperationResponse, VersionedSyncRequest, VersionedSyncResponse,
@@ -17,6 +18,54 @@ use crate::models::{
 #[derive(FromRow)]
 struct MaxSerialRow {
     max_serial: Option<i64>,
+}
+
+/// 查询用户当前最大操作序列号（无操作时为 0）
+async fn max_serial_number(pool: &PgPool, user_id: Uuid) -> AppResult<i64> {
+    let row: MaxSerialRow = sqlx::query_as(
+        "SELECT COALESCE(MAX(serial_number), 0) as max_serial FROM operation_logs WHERE user_id = $1"
+    )
+    .bind(user_id)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(row.max_serial.unwrap_or(0))
+}
+
+/// 判断操作类型与实体类型是否受支持
+fn is_supported_operation(op: &SyncOperationRequest) -> bool {
+    VALID_OPERATION_TYPES.contains(&op.operation_type.as_str())
+        && VALID_ENTITY_TYPES.contains(&op.entity_type.as_str())
+}
+
+/// 从同步负载解析记录时间，缺失或非法时使用当前时间
+fn record_time_from_json(data: &serde_json::Value) -> chrono::DateTime<chrono::Utc> {
+    data["record_time"]
+        .as_str()
+        .and_then(|t| chrono::DateTime::parse_from_rfc3339(t).ok())
+        .map(|dt| dt.with_timezone(&chrono::Utc))
+        .unwrap_or_else(chrono::Utc::now)
+}
+
+/// 从同步负载中按顺序写入套餐项
+async fn insert_plan_items_from_json(
+    tx: &mut Transaction<'_, sqlx::Postgres>,
+    plan_id: Uuid,
+    items: &[serde_json::Value],
+) -> AppResult<()> {
+    for (index, item) in items.iter().enumerate() {
+        sqlx::query(INSERT_PLAN_ITEM_SQL)
+            .bind(Uuid::new_v4())
+            .bind(plan_id)
+            .bind(item["food_id"].as_str().and_then(|f| Uuid::parse_str(f).ok()))
+            .bind(&item["food"])
+            .bind(item["quantity"].as_f64().unwrap_or(0.0))
+            .bind(index as i32)
+            .execute(&mut **tx)
+            .await?;
+    }
+
+    Ok(())
 }
 
 // 全局应用状态（包含数据库连接和操作队列缓存）
@@ -47,15 +96,7 @@ pub async fn record_operation(
     entity_type: &str,
     data: serde_json::Value,
 ) -> AppResult<()> {
-    // 获取当前用户最大序列号
-    let max_serial: MaxSerialRow = sqlx::query_as(
-        "SELECT COALESCE(MAX(serial_number), 0) as max_serial FROM operation_logs WHERE user_id = $1"
-    )
-    .bind(user_id)
-    .fetch_one(pool)
-    .await?;
-
-    let next_serial = max_serial.max_serial.unwrap_or(0) + 1;
+    let next_serial = max_serial_number(pool, user_id).await? + 1;
     let log_id = Uuid::new_v4();
 
     sqlx::query(
@@ -82,15 +123,7 @@ pub async fn get_sync_changes(
 ) -> AppResult<Json<ApiResponse<SyncChangesResponse>>> {
     let client_serial = query.serial_number;
 
-    // 获取最新序列号
-    let max_serial: MaxSerialRow = sqlx::query_as(
-        "SELECT COALESCE(MAX(serial_number), 0) as max_serial FROM operation_logs WHERE user_id = $1"
-    )
-    .bind(auth.user_id)
-    .fetch_one(&pool)
-    .await?;
-
-    let latest_serial = max_serial.max_serial.unwrap_or(0);
+    let latest_serial = max_serial_number(&pool, auth.user_id).await?;
 
     // 获取客户端序列号之后的所有操作
     let operations: Vec<OperationLog> = sqlx::query_as(
@@ -119,8 +152,7 @@ pub async fn upload_sync_operation(
     Json(req): Json<SyncOperationRequest>,
 ) -> AppResult<Json<ApiResponse<SyncOperationResponse>>> {
     // 验证操作类型
-    let valid_op_types = ["add", "update", "delete"];
-    if !valid_op_types.contains(&req.operation_type.as_str()) {
+    if !VALID_OPERATION_TYPES.contains(&req.operation_type.as_str()) {
         return Err(AppError::Validation(format!(
             "无效的操作类型: {}",
             req.operation_type
@@ -128,8 +160,7 @@ pub async fn upload_sync_operation(
     }
 
     // 验证实体类型
-    let valid_entity_types = ["food", "record", "plan", "goal", "account"];
-    if !valid_entity_types.contains(&req.entity_type.as_str()) {
+    if !VALID_ENTITY_TYPES.contains(&req.entity_type.as_str()) {
         return Err(AppError::Validation(format!(
             "无效的实体类型: {}",
             req.entity_type
@@ -146,15 +177,7 @@ pub async fn upload_sync_operation(
     )
     .await?;
 
-    // 获取新序列号
-    let max_serial: MaxSerialRow = sqlx::query_as(
-        "SELECT COALESCE(MAX(serial_number), 0) as max_serial FROM operation_logs WHERE user_id = $1"
-    )
-    .bind(auth.user_id)
-    .fetch_one(&pool)
-    .await?;
-
-    let serial_number = max_serial.max_serial.unwrap_or(0);
+    let serial_number = max_serial_number(&pool, auth.user_id).await?;
 
     let response = SyncOperationResponse {
         success: true,
@@ -176,13 +199,7 @@ pub async fn versioned_sync(
     let queues = state.operation_queues.clone();
 
     // 1. 获取服务器当前数据版本
-    let max_serial: MaxSerialRow = sqlx::query_as(
-        "SELECT COALESCE(MAX(serial_number), 0) as max_serial FROM operation_logs WHERE user_id = $1"
-    )
-    .bind(user_id)
-    .fetch_one(&pool)
-    .await?;
-    let server_version = max_serial.max_serial.unwrap_or(0);
+    let server_version = max_serial_number(&pool, user_id).await?;
 
     // 2. 如果有队头操作，检查该操作是否已在 operation_logs 中（按操作 id 精确匹配，避免重复处理）
     let mut head_processed = false;
@@ -315,10 +332,7 @@ async fn execute_operation(
 
         // ============ Meal Record 操作 ============
         ("record", "add") => {
-            let record_time = op.data["record_time"].as_str()
-                .and_then(|t| chrono::DateTime::parse_from_rfc3339(t).ok())
-                .map(|dt| dt.with_timezone(&chrono::Utc))
-                .unwrap_or_else(chrono::Utc::now);
+            let record_time = record_time_from_json(&op.data);
 
             let plan_items = Some(&op.data["plan_items"]).filter(|v| !v.is_null());
 
@@ -345,10 +359,7 @@ async fn execute_operation(
             .await?;
         }
         ("record", "update") => {
-            let record_time = op.data["record_time"].as_str()
-                .and_then(|t| chrono::DateTime::parse_from_rfc3339(t).ok())
-                .map(|dt| dt.with_timezone(&chrono::Utc))
-                .unwrap_or_else(chrono::Utc::now);
+            let record_time = record_time_from_json(&op.data);
 
             let plan_items = Some(&op.data["plan_items"]).filter(|v| !v.is_null());
 
@@ -407,21 +418,7 @@ async fn execute_operation(
             .await?;
 
             if let Some(items) = op.data["items"].as_array() {
-                for (index, item) in items.iter().enumerate() {
-                    let item_id = Uuid::new_v4();
-                    sqlx::query(
-                        "INSERT INTO plan_items (id, plan_id, food_id, food_data, quantity, sort_order)
-                         VALUES ($1, $2, $3, $4, $5, $6)"
-                    )
-                    .bind(item_id)
-                    .bind(id)
-                    .bind(item["food_id"].as_str().and_then(|f| Uuid::parse_str(f).ok()))
-                    .bind(&item["food"])
-                    .bind(item["quantity"].as_f64().unwrap_or(0.0))
-                    .bind(index as i32)
-                    .execute(&mut **tx)
-                    .await?;
-                }
+                insert_plan_items_from_json(tx, id, items).await?;
             }
         }
         ("plan", "update") => {
@@ -440,21 +437,7 @@ async fn execute_operation(
                     .execute(&mut **tx)
                     .await?;
 
-                for (index, item) in items.iter().enumerate() {
-                    let item_id = Uuid::new_v4();
-                    sqlx::query(
-                        "INSERT INTO plan_items (id, plan_id, food_id, food_data, quantity, sort_order)
-                         VALUES ($1, $2, $3, $4, $5, $6)"
-                    )
-                    .bind(item_id)
-                    .bind(id)
-                    .bind(item["food_id"].as_str().and_then(|f| Uuid::parse_str(f).ok()))
-                    .bind(&item["food"])
-                    .bind(item["quantity"].as_f64().unwrap_or(0.0))
-                    .bind(index as i32)
-                    .execute(&mut **tx)
-                    .await?;
-                }
+                insert_plan_items_from_json(tx, id, items).await?;
             }
         }
         ("plan", "delete") => {
@@ -575,28 +558,13 @@ async fn process_operation_queue(
         return Ok(());
     }
 
-    // 获取当前最大序列号
-    let max_serial: MaxSerialRow = sqlx::query_as(
-        "SELECT COALESCE(MAX(serial_number), 0) as max_serial FROM operation_logs WHERE user_id = $1"
-    )
-    .bind(user_id)
-    .fetch_one(pool)
-    .await?;
-    let mut next_serial = max_serial.max_serial.unwrap_or(0) + 1;
+    let mut next_serial = max_serial_number(pool, user_id).await? + 1;
 
     // 开启事务，批量处理所有操作
     let mut tx = pool.begin().await?;
 
     for op in &operations {
-        // 验证操作类型
-        let valid_op_types = ["add", "update", "delete"];
-        if !valid_op_types.contains(&op.operation_type.as_str()) {
-            continue;
-        }
-
-        // 验证实体类型
-        let valid_entity_types = ["food", "record", "plan", "goal", "account"];
-        if !valid_entity_types.contains(&op.entity_type.as_str()) {
+        if !is_supported_operation(op) {
             continue;
         }
 

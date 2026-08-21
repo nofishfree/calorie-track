@@ -119,6 +119,47 @@ pub struct FoodData {
     pub user_id: Option<String>,
 }
 
+impl Default for FoodData {
+    fn default() -> Self {
+        FoodData {
+            id: String::new(),
+            name: String::new(),
+            num: 0.0,
+            calorie: 0.0,
+            calorie_unit: "kj".to_string(),
+            carbs_g: 0.0,
+            protein_g: 0.0,
+            fat_g: 0.0,
+            unit: "g".to_string(),
+            user_id: None,
+        }
+    }
+}
+
+impl FoodData {
+    /// 解析数据库中的食物快照，解析失败时回退为空数据
+    pub fn from_json(value: serde_json::Value) -> Self {
+        serde_json::from_value(value).unwrap_or_default()
+    }
+}
+
+impl From<&Food> for FoodData {
+    fn from(food: &Food) -> Self {
+        FoodData {
+            id: food.id.to_string(),
+            name: food.name.clone(),
+            num: food.num,
+            calorie: food.calorie,
+            calorie_unit: food.calorie_unit.clone(),
+            carbs_g: food.carbs_g,
+            protein_g: food.protein_g,
+            fat_g: food.fat_g,
+            unit: food.unit.clone(),
+            user_id: food.user_id.map(|u| u.to_string()),
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub struct CreateFoodRequest {
     pub id: String,

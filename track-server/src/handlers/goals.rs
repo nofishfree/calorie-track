@@ -2,7 +2,7 @@ use axum::{
     extract::{Path, State},
     response::Json,
 };
-use sqlx::{PgPool, FromRow};
+use sqlx::PgPool;
 use uuid::Uuid;
 use serde_json::json;
 
@@ -12,6 +12,7 @@ use crate::models::{
     ApiResponse, CreateGoalTemplateRequest, GoalTemplate, MessageResponse,
     UpdateGoalTemplateRequest,
 };
+use crate::handlers::common::{ensure_owner, OwnedEntity};
 use crate::handlers::sync::record_operation;
 
 /// 默认每日目标（与前端 DEFAULT_DAILY_GOAL 一致）
@@ -137,20 +138,7 @@ pub async fn update_goal_template(
     Path(template_id): Path<Uuid>,
     Json(req): Json<UpdateGoalTemplateRequest>,
 ) -> AppResult<Json<ApiResponse<GoalTemplate>>> {
-    // 检查模板是否存在且属于当前用户
-    #[derive(FromRow)]
-    struct OwnerRow { user_id: Uuid }
-    let owner: Option<OwnerRow> = sqlx::query_as(
-        "SELECT user_id FROM goal_templates WHERE id = $1"
-    )
-    .bind(template_id)
-    .fetch_optional(&pool)
-    .await?;
-
-    let owner = owner.ok_or_else(|| AppError::NotFound("目标模板不存在".to_string()))?;
-    if owner.user_id != auth.user_id {
-        return Err(AppError::Auth("无权更新此目标模板".to_string()));
-    }
+    ensure_owner(&pool, OwnedEntity::GoalTemplate, template_id, auth.user_id, "更新").await?;
 
     // 如果设置为当前模板，先取消其他模板的 is_current
     if req.is_current == Some(true) {
@@ -205,20 +193,12 @@ pub async fn delete_goal_template(
     State(pool): State<PgPool>,
     Path(template_id): Path<Uuid>,
 ) -> AppResult<Json<MessageResponse>> {
-    // 检查模板是否存在且属于当前用户
-    #[derive(FromRow)]
-    struct OwnerRow { user_id: Uuid, is_current: bool }
-    let owner: Option<OwnerRow> = sqlx::query_as(
-        "SELECT user_id, is_current FROM goal_templates WHERE id = $1"
-    )
-    .bind(template_id)
-    .fetch_optional(&pool)
-    .await?;
+    ensure_owner(&pool, OwnedEntity::GoalTemplate, template_id, auth.user_id, "删除").await?;
 
-    let owner = owner.ok_or_else(|| AppError::NotFound("目标模板不存在".to_string()))?;
-    if owner.user_id != auth.user_id {
-        return Err(AppError::Auth("无权删除此目标模板".to_string()));
-    }
+    let was_current: bool = sqlx::query_scalar("SELECT is_current FROM goal_templates WHERE id = $1")
+        .bind(template_id)
+        .fetch_one(&pool)
+        .await?;
 
     // 至少保留一个模板
     let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM goal_templates WHERE user_id = $1")
@@ -235,7 +215,7 @@ pub async fn delete_goal_template(
         .await?;
 
     // 如果删除的是当前模板，将第一个模板设为当前
-    if owner.is_current {
+    if was_current {
         sqlx::query(
             "UPDATE goal_templates SET is_current = TRUE
              WHERE id = (SELECT id FROM goal_templates WHERE user_id = $1 ORDER BY created_at ASC LIMIT 1)"

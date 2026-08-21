@@ -13,6 +13,7 @@ use crate::error::{AppError, AppResult};
 use crate::models::{
     ApiResponse, CreateMealRecordRequest, MealRecordResponse, UpdateMealRecordRequest,
 };
+use crate::handlers::common::{ensure_owner, OwnedEntity};
 use crate::handlers::sync::record_operation;
 
 #[derive(Debug, Deserialize)]
@@ -42,11 +43,6 @@ struct MealRecordRow {
     plan_name: Option<String>,
     plan_items: Option<serde_json::Value>,
     is_quick_add: bool,
-}
-
-#[derive(FromRow)]
-struct RecordUserIdRow {
-    user_id: Uuid,
 }
 
 pub async fn create_meal_record(
@@ -91,21 +87,7 @@ pub async fn create_meal_record(
         auth.user_id,
         "add",
         "record",
-        json!({
-            "id": response.id,
-            "food_id": response.food_id,
-            "food": response.food,
-            "serving_count": response.serving_count,
-            "record_time": response.record_time,
-            "calories_total": response.calories_total,
-            "carbs_total": response.carbs_total,
-            "protein_total": response.protein_total,
-            "fat_total": response.fat_total,
-            "plan_id": response.plan_id,
-            "plan_name": response.plan_name,
-            "plan_items": response.plan_items,
-            "is_quick_add": response.is_quick_add,
-        }),
+        record_log_payload(&response),
     )
     .await?;
 
@@ -173,19 +155,7 @@ pub async fn update_meal_record(
     State(pool): State<PgPool>,
     Json(req): Json<UpdateMealRecordRequest>,
 ) -> AppResult<Json<ApiResponse<MealRecordResponse>>> {
-    // 检查记录是否存在且属于用户
-    let existing_record: Option<RecordUserIdRow> = sqlx::query_as(
-        "SELECT user_id FROM meal_records WHERE id = $1"
-    )
-    .bind(record_id)
-    .fetch_optional(&pool)
-    .await?;
-
-    let existing_record = existing_record.ok_or_else(|| AppError::NotFound("饮食记录不存在".to_string()))?;
-
-    if existing_record.user_id != auth.user_id {
-        return Err(AppError::Auth("无权更新此记录".to_string()));
-    }
+    ensure_owner(&pool, OwnedEntity::MealRecord, record_id, auth.user_id, "更新").await?;
 
     let plan_items_json = req.plan_items.as_ref().map(|items| json!(items));
 
@@ -230,21 +200,7 @@ pub async fn update_meal_record(
         auth.user_id,
         "update",
         "record",
-        json!({
-            "id": response.id,
-            "food_id": response.food_id,
-            "food": response.food,
-            "serving_count": response.serving_count,
-            "record_time": response.record_time,
-            "calories_total": response.calories_total,
-            "carbs_total": response.carbs_total,
-            "protein_total": response.protein_total,
-            "fat_total": response.fat_total,
-            "plan_id": response.plan_id,
-            "plan_name": response.plan_name,
-            "plan_items": response.plan_items,
-            "is_quick_add": response.is_quick_add,
-        }),
+        record_log_payload(&response),
     )
     .await?;
 
@@ -256,19 +212,7 @@ pub async fn delete_meal_record(
     auth: AuthContext,
     State(pool): State<PgPool>,
 ) -> AppResult<Json<crate::models::MessageResponse>> {
-    // 检查记录是否存在且属于用户
-    let existing_record: Option<RecordUserIdRow> = sqlx::query_as(
-        "SELECT user_id FROM meal_records WHERE id = $1"
-    )
-    .bind(record_id)
-    .fetch_optional(&pool)
-    .await?;
-
-    let existing_record = existing_record.ok_or_else(|| AppError::NotFound("饮食记录不存在".to_string()))?;
-
-    if existing_record.user_id != auth.user_id {
-        return Err(AppError::Auth("无权删除此记录".to_string()));
-    }
+    ensure_owner(&pool, OwnedEntity::MealRecord, record_id, auth.user_id, "删除").await?;
 
     sqlx::query("DELETE FROM meal_records WHERE id = $1")
         .bind(record_id)
@@ -290,21 +234,28 @@ pub async fn delete_meal_record(
     }))
 }
 
+/// 构造记录同步日志的 data 负载
+fn record_log_payload(response: &MealRecordResponse) -> serde_json::Value {
+    json!({
+        "id": response.id,
+        "food_id": response.food_id,
+        "food": response.food,
+        "serving_count": response.serving_count,
+        "record_time": response.record_time,
+        "calories_total": response.calories_total,
+        "carbs_total": response.carbs_total,
+        "protein_total": response.protein_total,
+        "fat_total": response.fat_total,
+        "plan_id": response.plan_id,
+        "plan_name": response.plan_name,
+        "plan_items": response.plan_items,
+        "is_quick_add": response.is_quick_add,
+    })
+}
+
 /// 将数据库行转换为响应
 fn row_to_response(row: MealRecordRow) -> MealRecordResponse {
-    let food: crate::models::FoodData = serde_json::from_value(row.food_data)
-        .unwrap_or_else(|_| crate::models::FoodData {
-            id: String::new(),
-            name: String::new(),
-            num: 0.0,
-            calorie: 0.0,
-            calorie_unit: "kj".to_string(),
-            carbs_g: 0.0,
-            protein_g: 0.0,
-            fat_g: 0.0,
-            unit: "g".to_string(),
-            user_id: None,
-        });
+    let food = crate::models::FoodData::from_json(row.food_data);
 
     let plan_items: Option<Vec<crate::models::PlanItemData>> = row
         .plan_items

@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { Button, Input, Toast } from 'antd-mobile'
 import { useAuthStore } from '../../stores'
 import { authAPI, initUserData } from '../../api'
+import { BackButton } from '../../components'
+import { describeApiError, getApiErrorMessage } from '../../utils/apiError'
 import styles from './index.module.css'
 
 export default function AddAccountPage() {
@@ -50,25 +52,14 @@ export default function AddAccountPage() {
         console.error('[AddAccount] Unexpected response structure:', response)
         Toast.show('登录失败，请检查邮箱和密码')
       }
-    } catch (error: any) {
-      console.error('[AddAccount] Error occurred:', {
-        message: error.message,
-        response: error.response?.data,
-        status: error.response?.status,
-        fullError: error,
-      })
-      
-      if (error.response?.data?.message) {
-        Toast.show(error.response.data.message)
-      } else if (error.response?.status === 401) {
-        Toast.show('邮箱或密码错误')
-      } else if (error.response?.status === 500) {
-        Toast.show('服务器内部错误')
-      } else if (error.message?.includes('Network Error')) {
-        Toast.show('网络连接失败，请检查网络')
-      } else {
-        Toast.show('登录失败，请重试')
-      }
+    } catch (error) {
+      console.error('[AddAccount] Error occurred:', describeApiError(error))
+
+      Toast.show(getApiErrorMessage(error, {
+        statusMessages: { 401: '邮箱或密码错误', 500: '服务器内部错误' },
+        fallback: '登录失败，请重试',
+        preferField: 'message',
+      }))
     } finally {
       setLoading(false)
     }
@@ -80,11 +71,7 @@ export default function AddAccountPage() {
 
   return (
     <div className={styles.container}>
-      <button className={styles.backBtn} onClick={handleBack}>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="24" height="24">
-          <path d="M19 12H5M12 19l-7-7 7-7" />
-        </svg>
-      </button>
+      <BackButton className={styles.backBtn} onClick={handleBack} />
 
       <div className={styles.header}>
         <h1 className={styles.title}>营养追踪</h1>
