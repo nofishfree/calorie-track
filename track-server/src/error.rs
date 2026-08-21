@@ -32,6 +32,9 @@ pub enum AppError {
 
     #[error("Configuration error: {0}")]
     Config(String),
+
+    #[error("Internal error: {0}")]
+    Internal(String),
 }
 
 impl IntoResponse for AppError {
@@ -56,6 +59,10 @@ impl IntoResponse for AppError {
             AppError::Config(msg) => {
                 tracing::error!("Configuration error: {}", msg);
                 (StatusCode::INTERNAL_SERVER_ERROR, "服务端配置错误".to_string())
+            }
+            AppError::Internal(msg) => {
+                tracing::error!("Internal error: {}", msg);
+                (StatusCode::INTERNAL_SERVER_ERROR, "服务器内部错误".to_string())
             }
         };
 

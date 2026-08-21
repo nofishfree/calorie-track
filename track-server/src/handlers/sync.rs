@@ -81,6 +81,19 @@ impl FromRef<AppState> for PgPool {
     }
 }
 
+type OperationQueues = Arc<Mutex<HashMap<Uuid, Vec<SyncOperationRequest>>>>;
+
+/// 获取操作队列锁：互斥锁被投毒（此前持锁线程 panic）时恢复内部数据，
+/// 避免单次 panic 让后续所有同步请求永久失败
+fn lock_queues(
+    queues: &OperationQueues,
+) -> std::sync::MutexGuard<'_, HashMap<Uuid, Vec<SyncOperationRequest>>> {
+    queues.lock().unwrap_or_else(|poisoned| {
+        tracing::error!("Operation queue mutex was poisoned, recovering");
+        poisoned.into_inner()
+    })
+}
+
 impl std::ops::Deref for AppState {
     type Target = PgPool;
     fn deref(&self) -> &Self::Target {
@@ -212,8 +225,7 @@ pub async fn versioned_sync(
         .bind(user_id)
         .bind(head_op.id)
         .fetch_one(&pool)
-        .await
-        .unwrap_or((false,));
+        .await?;
 
         if exists.0 {
             // 已在操作日志中，确认已记录，前端可删除该操作
@@ -221,8 +233,8 @@ pub async fn versioned_sync(
         } else {
             // 不在数据库中，加入内存队列缓存，异步处理
             {
-                let mut queues_map = queues.lock().unwrap();
-                let user_queue = queues_map.entry(user_id).or_insert_with(Vec::new);
+                let mut queues_map = lock_queues(&queues);
+                let user_queue = queues_map.entry(user_id).or_default();
                 user_queue.push(head_op.clone());
             }
 
@@ -230,7 +242,10 @@ pub async fn versioned_sync(
             let queues_clone = queues.clone();
             tokio::spawn(async move {
                 if let Err(e) = process_operation_queue(&pool_clone, user_id, queues_clone).await {
-                    eprintln!("Async operation queue processing failed: {:?}", e);
+                    tracing::error!(
+                        user_id = %user_id,
+                        "Async operation queue processing failed: {:?}", e
+                    );
                 }
             });
 
@@ -559,8 +574,15 @@ async fn execute_operation(
             .await?;
         }
 
-        // 其他组合不处理
-        _ => {}
+        // 其他组合不处理：记录日志，避免操作被静默丢弃
+        (entity_type, operation_type) => {
+            tracing::warn!(
+                user_id = %user_id,
+                entity_type,
+                operation_type,
+                "Unsupported entity/operation combination, operation skipped"
+            );
+        }
     }
 
     Ok(())
@@ -570,10 +592,10 @@ async fn execute_operation(
 async fn process_operation_queue(
     pool: &PgPool,
     user_id: Uuid,
-    queues: Arc<Mutex<HashMap<Uuid, Vec<SyncOperationRequest>>>>,
+    queues: OperationQueues,
 ) -> AppResult<()> {
     let operations: Vec<SyncOperationRequest> = {
-        let mut queues_map = queues.lock().unwrap();
+        let mut queues_map = lock_queues(&queues);
         match queues_map.get_mut(&user_id) {
             Some(q) => q.drain(..).collect(),
             None => return Ok(()),
@@ -591,14 +613,29 @@ async fn process_operation_queue(
 
     for op in &operations {
         if !is_supported_operation(op) {
+            tracing::warn!(
+                user_id = %user_id,
+                operation_id = %op.id,
+                entity_type = %op.entity_type,
+                operation_type = %op.operation_type,
+                "Unsupported entity/operation type, operation skipped"
+            );
             continue;
         }
 
         // 1. 执行业务操作（写入业务表）
-        if let Err(e) = execute_operation(&mut tx, user_id, op).await {
-            eprintln!("Failed to execute operation: {:?}", e);
-            continue;
-        }
+        // 出错时回滚整个事务并向上传递错误：操作不会写入 operation_logs，
+        // 客户端下次轮询会重试，而不是静默丢弃该操作
+        execute_operation(&mut tx, user_id, op).await.map_err(|e| {
+            tracing::error!(
+                user_id = %user_id,
+                operation_id = %op.id,
+                entity_type = %op.entity_type,
+                operation_type = %op.operation_type,
+                "Failed to execute sync operation: {:?}", e
+            );
+            e
+        })?;
 
         // 2. 记录操作日志（使用前端生成的操作 ID，保证幂等性）
         sqlx::query(

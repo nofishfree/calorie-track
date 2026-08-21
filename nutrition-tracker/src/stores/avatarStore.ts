@@ -19,8 +19,8 @@ export async function computeHash(data: string): Promise<string> {
 // 头像存储管理
 export const avatarStore = {
   /**
-   * 并发检查头像哈希是否在数据库中，不在则上传（非阻塞，不影响接口）
-   * 仅在已登录且非本地账号时执行
+   * 并发检查头像哈希是否在数据库中，不在则上传
+   * 仅在已登录且非本地账号时执行；上传失败时向调用方抛出错误
    */
   async syncAvatarToServer(hash: string, data: string): Promise<void> {
     const { isLocalAccount, isLoggedIn } = useAuthStore.getState()
@@ -38,8 +38,6 @@ export const avatarStore = {
 
       // 不存在则上传
       await syncAPI.uploadAvatar({ hash, data })
-    } catch (error) {
-      console.error('Failed to sync avatar to server:', error)
     } finally {
       uploadingHashes.delete(hash)
     }
@@ -56,7 +54,9 @@ export const avatarStore = {
     await db.put('avatars', avatar)
 
     // 并发检查并上传（不阻塞）
-    this.syncAvatarToServer(hash, data)
+    void this.syncAvatarToServer(hash, data).catch(error => {
+      console.error('Failed to sync avatar after save:', error)
+    })
   },
 
   // 从本地 IndexedDB 获取头像数据（查询时机）
@@ -67,7 +67,9 @@ export const avatarStore = {
 
     // 查询到数据时，并发检查并上传（不阻塞）
     if (data) {
-      this.syncAvatarToServer(hash, data)
+      void this.syncAvatarToServer(hash, data).catch(error => {
+        console.error('Failed to sync avatar after read:', error)
+      })
     }
 
     return data

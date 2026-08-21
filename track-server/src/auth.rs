@@ -69,7 +69,7 @@ pub fn create_jwt(user_id: Uuid) -> AppResult<String> {
     let secret = jwt_secret()?;
     let expiration = chrono::Utc::now()
         .checked_add_signed(chrono::Duration::days(7))
-        .expect("valid timestamp")
+        .ok_or_else(|| AppError::Internal("计算令牌过期时间失败".to_string()))?
         .timestamp();
 
     let claims = Claims {

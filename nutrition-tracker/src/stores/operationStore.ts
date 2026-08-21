@@ -20,6 +20,7 @@ export interface OperationItem {
 interface OperationState {
   queues: Record<string, OperationItem[]>
   isSyncing: boolean
+  lastSyncError: string | null
   pollingTimer: ReturnType<typeof setInterval> | null
   addOperation: (entity_type: EntityType, data: any, operation_type?: OperationType) => void
   deleteOperation: (entity_type: EntityType, data: any) => void
@@ -38,6 +39,7 @@ export const useOperationStore = create<OperationState>()(
     (set, get) => ({
       queues: {},
       isSyncing: false,
+      lastSyncError: null,
       pollingTimer: null,
 
       addOperation: (entity_type, data, operation_type = 'add') => {
@@ -199,12 +201,8 @@ export const useOperationStore = create<OperationState>()(
             get().removeOperation(targetUserId, headOperationId)
           }
 
-          // 更新数据版本
-          if (response.server_version > clientVersion) {
-            useAuthStore.getState().updateDataVersion(response.server_version)
-          }
-
           // 处理增量同步数据：将服务器返回的操作应用到本地 store
+          // 必须在更新数据版本之前完成：若应用失败而版本已推进，这批操作将永远不会被重新下发
           if (response.operations && response.operations.length > 0) {
             // 动态导入各 store（避免循环依赖）
             const { useFoodStore } = await import('./foodStore')
@@ -244,8 +242,21 @@ export const useOperationStore = create<OperationState>()(
               }
             }
           }
+
+          // 增量操作全部应用成功后，才推进本地数据版本
+          if (response.server_version > clientVersion) {
+            useAuthStore.getState().updateDataVersion(response.server_version)
+          }
+
+          if (get().lastSyncError) {
+            set({ lastSyncError: null })
+          }
         } catch (error) {
+          // 保留数据版本与队列不变，下次轮询会重试；同时暴露错误供 UI 使用
           console.error('Versioned sync error:', error)
+          set({
+            lastSyncError: error instanceof Error ? error.message : String(error),
+          })
         } finally {
           set({ isSyncing: false })
         }

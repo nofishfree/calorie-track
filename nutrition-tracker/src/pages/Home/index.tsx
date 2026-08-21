@@ -1,6 +1,6 @@
 import { useMemo, useState, useRef, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Dialog, Button, Popup, Input, Selector } from 'antd-mobile'
+import { Dialog, Button, Popup, Input, Selector, Toast } from 'antd-mobile'
 import { CalorieRing, NutrientCards, RecordCard, AvatarDisplay } from '../../components'
 import { useGoalStore, useAuthStore, useRecordStore, useFoodStore, usePlanStore, useUIStore } from '../../stores'
 import { getToday } from '../../utils/helpers'
@@ -163,6 +163,7 @@ export default function HomePage() {
         deleteRecordFromStore(recordId)
       } catch (error) {
         console.error('Failed to delete record:', error)
+        Toast.show('删除失败')
       }
     }
   }
@@ -297,6 +298,7 @@ export default function HomePage() {
       setEditingRecord(null)
     } catch (error) {
       console.error('Failed to update record:', error)
+      Toast.show('保存失败')
     }
   }
 

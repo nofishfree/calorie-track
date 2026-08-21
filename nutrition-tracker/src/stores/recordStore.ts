@@ -89,6 +89,11 @@ export const useRecordStore = create<RecordState>()(
       
       deleteRecord: (id) => {
         const record = get().records.find(r => r.id === id)
+        if (!record) {
+          // 本地无此记录时不入队：服务端无法解析实体，操作会被静默丢弃
+          console.warn(`Skipped delete operation: no local record with id ${id}`)
+          return
+        }
         set((state) => ({
           records: state.records.filter((r) => r.id !== id),
         }))

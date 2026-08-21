@@ -30,15 +30,14 @@ struct UserRow {
 }
 
 /// 获取用户的数据版本（操作日志数量）
-pub async fn get_data_version(pool: &PgPool, user_id: Uuid) -> i64 {
+pub async fn get_data_version(pool: &PgPool, user_id: Uuid) -> AppResult<i64> {
     let count: (i64,) = sqlx::query_as(
         "SELECT COUNT(*) FROM operation_logs WHERE user_id = $1"
     )
     .bind(user_id)
     .fetch_one(pool)
-    .await
-    .unwrap_or((0,));
-    count.0
+    .await?;
+    Ok(count.0)
 }
 
 pub async fn register(
@@ -82,7 +81,7 @@ pub async fn register(
     // 创建用户默认目标模板
     crate::handlers::goals::create_default_template(&pool, user_id).await?;
 
-    let data_version = get_data_version(&pool, user_id).await;
+    let data_version = get_data_version(&pool, user_id).await?;
 
     let token = create_jwt(user_id)?;
 
@@ -133,7 +132,7 @@ pub async fn login(
     // 创建 JWT token
     let token = create_jwt(user.id)?;
 
-    let data_version = get_data_version(&pool, user.id).await;
+    let data_version = get_data_version(&pool, user.id).await?;
 
     let user_response = UserResponse {
         id: user.id,
