@@ -4,6 +4,7 @@ import { SearchBar, Popup, Button, Tag, Toast, Tabs, Dialog, Input } from 'antd-
 import { useFoodStore, useRecordStore } from '../stores'
 import { getToday, getCurrentTime } from '../utils/helpers'
 import type { Food } from '../types'
+import { sanitizeNumberInput, scaleFoodNutrition } from '../utils/nutrition'
 import dayjs from 'dayjs'
 import styles from './AddRecordPanel.module.css'
 
@@ -60,19 +61,16 @@ export default function AddRecordPanel({ visible, onClose, onRecordAdded }: Prop
     const record_time = dayjs(`${getToday()}T${selectedTime}:00`).toISOString()
     
     const ratio = servingCount / selectedFood.num
-    const calories = Math.round(selectedFood.calorie * ratio * 100) / 100
-    const protein = Math.round(selectedFood.protein_g * ratio * 100) / 100
-    const fat = Math.round(selectedFood.fat_g * ratio * 100) / 100
-    const carbs = Math.round(selectedFood.carbs_g * ratio * 100) / 100
+    const totals = scaleFoodNutrition(selectedFood, servingCount)
 
     addRecord({
       food: selectedFood,
       serving_count: ratio,
       record_time,
-      calories_total: calories,
-      carbs_total: carbs,
-      protein_total: protein,
-      fat_total: fat,
+      calories_total: totals.calories,
+      carbs_total: totals.carbs,
+      protein_total: totals.protein,
+      fat_total: totals.fat,
     })
 
     Toast.show('记录已添加')
@@ -239,11 +237,7 @@ export default function AddRecordPanel({ visible, onClose, onRecordAdded }: Prop
                   }, 0)
                 }}
                 onChange={(val) => {
-                  let filtered = val.replace(/[^\d.]/g, '')
-                  const parts = filtered.split('.')
-                  if (parts.length > 2) {
-                    filtered = parts[0] + '.' + parts.slice(1).join('')
-                  }
+                  const filtered = sanitizeNumberInput(val)
                   setServingCountStr(filtered)
                   if (servingCountDebounceRef.current) {
                     clearTimeout(servingCountDebounceRef.current)

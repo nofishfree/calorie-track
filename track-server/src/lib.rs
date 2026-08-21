@@ -6,6 +6,7 @@ pub mod validation;
 
 pub mod handlers {
     pub mod auth;
+    pub mod common;
     pub mod foods;
     pub mod meal_records;
     pub mod goals;

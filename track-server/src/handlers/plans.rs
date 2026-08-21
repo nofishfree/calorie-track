@@ -9,9 +9,10 @@ use serde_json::json;
 use crate::auth::AuthContext;
 use crate::error::{AppError, AppResult};
 use crate::models::{
-    ApiResponse, CreatePlanRequest, MealPlanResponse, PlanItemResponse,
+    ApiResponse, CreatePlanRequest, MealPlanResponse, PlanItemRequest, PlanItemResponse,
     UpdatePlanRequest,
 };
+use crate::handlers::common::{INSERT_PLAN_ITEM_SQL, SELECT_PLAN_ITEMS_SQL};
 use crate::handlers::sync::record_operation;
 
 #[derive(FromRow)]
@@ -33,12 +34,6 @@ struct PlanItemRow {
     sort_order: i32,
 }
 
-#[derive(FromRow)]
-struct PlanUserIdRow {
-    #[allow(dead_code)]
-    user_id: Uuid,
-}
-
 pub async fn get_plans(
     auth: AuthContext,
     State(pool): State<PgPool>,
@@ -53,21 +48,8 @@ pub async fn get_plans(
 
     let mut response = Vec::new();
     for plan in plans {
-        let items = sqlx::query_as::<_, PlanItemRow>(
-            "SELECT id, plan_id, food_id, food_data, quantity, sort_order
-             FROM plan_items WHERE plan_id = $1 ORDER BY sort_order"
-        )
-        .bind(plan.id)
-        .fetch_all(&pool)
-        .await?;
-
-        response.push(MealPlanResponse {
-            id: plan.id,
-            user_id: plan.user_id,
-            name: plan.name,
-            items: items.into_iter().map(row_to_item_response).collect(),
-            created_at: plan.created_at,
-        });
+        let items = fetch_plan_items(&pool, plan.id).await?;
+        response.push(plan_to_response(plan, items));
     }
 
     Ok(Json(ApiResponse { data: response }))
@@ -78,33 +60,9 @@ pub async fn get_plan(
     State(pool): State<PgPool>,
     Path(plan_id): Path<Uuid>,
 ) -> AppResult<Json<ApiResponse<MealPlanResponse>>> {
-    let plan = sqlx::query_as::<_, MealPlanRow>(
-        "SELECT id, user_id, name, created_at
-         FROM meal_plans WHERE id = $1 AND user_id = $2"
-    )
-    .bind(plan_id)
-    .bind(auth.user_id)
-    .fetch_optional(&pool)
-    .await?
-    .ok_or_else(|| AppError::NotFound("套餐不存在".to_string()))?;
+    let plan = get_plan_inner(&pool, auth.user_id, plan_id).await?;
 
-    let items = sqlx::query_as::<_, PlanItemRow>(
-        "SELECT id, plan_id, food_id, food_data, quantity, sort_order
-         FROM plan_items WHERE plan_id = $1 ORDER BY sort_order"
-    )
-    .bind(plan_id)
-    .fetch_all(&pool)
-    .await?;
-
-    Ok(Json(ApiResponse {
-        data: MealPlanResponse {
-            id: plan.id,
-            user_id: plan.user_id,
-            name: plan.name,
-            items: items.into_iter().map(row_to_item_response).collect(),
-            created_at: plan.created_at,
-        },
-    }))
+    Ok(Json(ApiResponse { data: plan }))
 }
 
 pub async fn create_plan(
@@ -130,21 +88,7 @@ pub async fn create_plan(
     .await?;
 
     // 添加套餐项
-    for (index, item) in payload.items.iter().enumerate() {
-        let item_id = Uuid::new_v4();
-        sqlx::query(
-            "INSERT INTO plan_items (id, plan_id, food_id, food_data, quantity, sort_order)
-             VALUES ($1, $2, $3, $4, $5, $6)"
-        )
-        .bind(item_id)
-        .bind(plan_id)
-        .bind(item.food_id)
-        .bind(json!(item.food))
-        .bind(item.quantity)
-        .bind(index as i32)
-        .execute(&mut *tx)
-        .await?;
-    }
+    insert_plan_items(&mut tx, plan_id, &payload.items).await?;
 
     tx.commit().await?;
 
@@ -168,15 +112,7 @@ pub async fn update_plan(
     Path(plan_id): Path<Uuid>,
     Json(payload): Json<UpdatePlanRequest>,
 ) -> AppResult<Json<ApiResponse<MealPlanResponse>>> {
-    // 检查套餐是否存在且属于当前用户
-    sqlx::query_as::<_, PlanUserIdRow>(
-        "SELECT user_id FROM meal_plans WHERE id = $1 AND user_id = $2"
-    )
-    .bind(plan_id)
-    .bind(auth.user_id)
-    .fetch_optional(&pool)
-    .await?
-    .ok_or_else(|| AppError::NotFound("套餐不存在".to_string()))?;
+    ensure_plan_owner(&pool, plan_id, auth.user_id).await?;
 
     let mut tx = pool.begin().await?;
 
@@ -198,21 +134,7 @@ pub async fn update_plan(
             .await?;
 
         // 添加新项
-        for (index, item) in items.iter().enumerate() {
-            let item_id = Uuid::new_v4();
-            sqlx::query(
-                "INSERT INTO plan_items (id, plan_id, food_id, food_data, quantity, sort_order)
-                 VALUES ($1, $2, $3, $4, $5, $6)"
-            )
-            .bind(item_id)
-            .bind(plan_id)
-            .bind(item.food_id)
-            .bind(json!(item.food))
-            .bind(item.quantity)
-            .bind(index as i32)
-            .execute(&mut *tx)
-            .await?;
-        }
+        insert_plan_items(&mut tx, plan_id, &items).await?;
     }
 
     tx.commit().await?;
@@ -236,15 +158,7 @@ pub async fn delete_plan(
     State(pool): State<PgPool>,
     Path(plan_id): Path<Uuid>,
 ) -> AppResult<Json<crate::models::MessageResponse>> {
-    // 检查套餐是否存在且属于当前用户
-    sqlx::query_as::<_, PlanUserIdRow>(
-        "SELECT user_id FROM meal_plans WHERE id = $1 AND user_id = $2"
-    )
-    .bind(plan_id)
-    .bind(auth.user_id)
-    .fetch_optional(&pool)
-    .await?
-    .ok_or_else(|| AppError::NotFound("套餐不存在".to_string()))?;
+    ensure_plan_owner(&pool, plan_id, auth.user_id).await?;
 
     sqlx::query("DELETE FROM meal_plans WHERE id = $1")
         .bind(plan_id)
@@ -282,43 +196,72 @@ async fn get_plan_inner(
     .await?
     .ok_or_else(|| AppError::NotFound("套餐不存在".to_string()))?;
 
-    let items = sqlx::query_as::<_, PlanItemRow>(
-        "SELECT id, plan_id, food_id, food_data, quantity, sort_order
-         FROM plan_items WHERE plan_id = $1 ORDER BY sort_order"
+    let items = fetch_plan_items(pool, plan_id).await?;
+
+    Ok(plan_to_response(plan, items))
+}
+
+/// 校验套餐存在且属于当前用户
+async fn ensure_plan_owner(pool: &PgPool, plan_id: Uuid, user_id: Uuid) -> AppResult<()> {
+    sqlx::query_scalar::<_, Uuid>(
+        "SELECT user_id FROM meal_plans WHERE id = $1 AND user_id = $2"
     )
     .bind(plan_id)
-    .fetch_all(pool)
-    .await?;
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or_else(|| AppError::NotFound("套餐不存在".to_string()))?;
 
-    Ok(MealPlanResponse {
+    Ok(())
+}
+
+/// 读取套餐下的所有套餐项
+async fn fetch_plan_items(pool: &PgPool, plan_id: Uuid) -> AppResult<Vec<PlanItemRow>> {
+    let items = sqlx::query_as::<_, PlanItemRow>(SELECT_PLAN_ITEMS_SQL)
+        .bind(plan_id)
+        .fetch_all(pool)
+        .await?;
+
+    Ok(items)
+}
+
+/// 按顺序写入套餐项
+async fn insert_plan_items(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    plan_id: Uuid,
+    items: &[PlanItemRequest],
+) -> AppResult<()> {
+    for (index, item) in items.iter().enumerate() {
+        sqlx::query(INSERT_PLAN_ITEM_SQL)
+            .bind(Uuid::new_v4())
+            .bind(plan_id)
+            .bind(item.food_id)
+            .bind(json!(item.food))
+            .bind(item.quantity)
+            .bind(index as i32)
+            .execute(&mut **tx)
+            .await?;
+    }
+
+    Ok(())
+}
+
+fn plan_to_response(plan: MealPlanRow, items: Vec<PlanItemRow>) -> MealPlanResponse {
+    MealPlanResponse {
         id: plan.id,
         user_id: plan.user_id,
         name: plan.name,
         items: items.into_iter().map(row_to_item_response).collect(),
         created_at: plan.created_at,
-    })
+    }
 }
 
 /// 将数据库行转换为套餐项响应
 fn row_to_item_response(row: PlanItemRow) -> PlanItemResponse {
-    let food_data: crate::models::FoodData = serde_json::from_value(row.food_data)
-        .unwrap_or_else(|_| crate::models::FoodData {
-            id: String::new(),
-            name: String::new(),
-            num: 0.0,
-            calorie: 0.0,
-            calorie_unit: "kj".to_string(),
-            carbs_g: 0.0,
-            protein_g: 0.0,
-            fat_g: 0.0,
-            unit: "g".to_string(),
-            user_id: None,
-        });
-
     PlanItemResponse {
         id: row.id,
         food_id: row.food_id,
-        food: food_data,
+        food: crate::models::FoodData::from_json(row.food_data),
         quantity: row.quantity,
         sort_order: row.sort_order,
     }
