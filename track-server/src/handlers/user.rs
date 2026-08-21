@@ -35,7 +35,7 @@ pub async fn get_user_me(
 
     let user = user.ok_or_else(|| crate::error::AppError::NotFound("用户不存在".to_string()))?;
 
-    let data_version = get_data_version(&pool, auth.user_id).await;
+    let data_version = get_data_version(&pool, auth.user_id).await?;
 
     let response = UserMeResponse {
         id: user.id,
@@ -82,7 +82,7 @@ pub async fn update_profile(
     )
     .await?;
 
-    let data_version = get_data_version(&pool, auth.user_id).await;
+    let data_version = get_data_version(&pool, auth.user_id).await?;
 
     let response = UserMeResponse {
         id: user.id,

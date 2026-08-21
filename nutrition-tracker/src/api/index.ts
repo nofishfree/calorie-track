@@ -360,6 +360,7 @@ export const initUserData = async (userId: string) => {
     // 2. 加载最近7天的记录
     const recordsByDate = useRecordStore.getState()
     const allRecords: any[] = []
+    const failedDates: string[] = []
 
     // 逐天获取记录（简单可靠）
     for (let i = 6; i >= 0; i--) {
@@ -379,6 +380,7 @@ export const initUserData = async (userId: string) => {
         recordsByDate.setRecordsForDate(date, mappedRecords)
       } catch (e) {
         console.error(`Failed to fetch records for ${date}:`, e)
+        failedDates.push(date)
       }
     }
 
@@ -400,7 +402,13 @@ export const initUserData = async (userId: string) => {
       useGoalStore.getState().syncTemplates(templates, currentTemplate.id)
     }
 
-    return { success: true, foods: mappedFoods, records: allRecords }
+    // 部分日期加载失败时也视为初始化不完整，调用方会提示用户
+    return {
+      success: failedDates.length === 0,
+      foods: mappedFoods,
+      records: allRecords,
+      failedDates,
+    }
   } catch (error) {
     console.error('Failed to initialize user data:', error)
     return { success: false, error }
