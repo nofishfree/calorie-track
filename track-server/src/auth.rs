@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::env;
 use uuid::Uuid;
 
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 use crate::models::Claims;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -51,7 +51,7 @@ pub fn create_jwt(user_id: Uuid) -> AppResult<String> {
     let secret = env::var("JWT_SECRET").unwrap_or_else(|_| "default-secret-key".to_string());
     let expiration = chrono::Utc::now()
         .checked_add_signed(chrono::Duration::days(7))
-        .expect("valid timestamp")
+        .ok_or_else(|| AppError::Internal("计算令牌过期时间失败".to_string()))?
         .timestamp();
 
     let claims = Claims {

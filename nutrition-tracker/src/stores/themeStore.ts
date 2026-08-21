@@ -46,7 +46,8 @@ export const initTheme = () => {
     try {
       const parsed = JSON.parse(stored)
       mode = parsed.state?.mode || 'light'
-    } catch {
+    } catch (error) {
+      console.warn('Failed to parse persisted theme, falling back to light:', error)
       mode = 'light'
     }
   }
