@@ -13,6 +13,12 @@ use crate::models::{
     ApiResponse, CreateFoodRequest, Food, FoodData, UpdateFoodRequest,
 };
 use crate::handlers::sync::record_operation;
+use crate::validation::validate_optional_text;
+
+/// 食物名称长度上限（与 foods.name VARCHAR(200) 一致）
+const MAX_FOOD_NAME_LEN: usize = 200;
+/// 单位字段长度上限
+const MAX_UNIT_LEN: usize = 20;
 
 #[derive(Debug, Deserialize)]
 pub struct FoodQuery {
@@ -47,6 +53,10 @@ pub async fn create_food(
     State(pool): State<PgPool>,
     Json(req): Json<CreateFoodRequest>,
 ) -> AppResult<Json<ApiResponse<Food>>> {
+    validate_optional_text(Some(&req.name), MAX_FOOD_NAME_LEN, "食物名称")?;
+    validate_optional_text(Some(&req.unit), MAX_UNIT_LEN, "单位")?;
+    validate_optional_text(Some(&req.calorie_unit), MAX_UNIT_LEN, "热量单位")?;
+
     // 使用客户端传来的 ID，解析失败则返回错误
     let food_id = Uuid::parse_str(&req.id)
         .map_err(|_| AppError::Validation("无效的食物 ID 格式".to_string()))?;
@@ -127,14 +137,16 @@ pub async fn get_foods(
 
 pub async fn get_food(
     Path(food_id): Path<Uuid>,
-    _auth: AuthContext,
+    auth: AuthContext,
     State(pool): State<PgPool>,
 ) -> AppResult<Json<ApiResponse<Food>>> {
+    // 仅允许读取自己的食物或全局食物（user_id IS NULL）
     let food: Option<Food> = sqlx::query_as(
         "SELECT id, user_id, name, num, calorie, calorie_unit, carbs_g, protein_g, fat_g, unit, usage_count
-         FROM foods WHERE id = $1"
+         FROM foods WHERE id = $1 AND (user_id = $2 OR user_id IS NULL)"
     )
     .bind(food_id)
+    .bind(auth.user_id)
     .fetch_optional(&pool)
     .await?;
 
@@ -149,6 +161,10 @@ pub async fn update_food(
     State(pool): State<PgPool>,
     Json(req): Json<UpdateFoodRequest>,
 ) -> AppResult<Json<ApiResponse<Food>>> {
+    validate_optional_text(req.name.as_ref(), MAX_FOOD_NAME_LEN, "食物名称")?;
+    validate_optional_text(req.unit.as_ref(), MAX_UNIT_LEN, "单位")?;
+    validate_optional_text(req.calorie_unit.as_ref(), MAX_UNIT_LEN, "热量单位")?;
+
     // 检查食物是否存在且属于用户
     let existing_food: Option<FoodUserIdRow> = sqlx::query_as(
         "SELECT user_id FROM foods WHERE id = $1"

@@ -248,6 +248,27 @@ pub async fn versioned_sync(
     Ok(Json(ApiResponse { data: response }))
 }
 
+/// 确认套餐属于当前用户（plan_items 无 user_id 列，必须通过 meal_plans 校验）
+async fn require_plan_owner(
+    tx: &mut Transaction<'_, sqlx::Postgres>,
+    user_id: Uuid,
+    plan_id: Uuid,
+) -> AppResult<()> {
+    let owned: Option<(Uuid,)> = sqlx::query_as(
+        "SELECT id FROM meal_plans WHERE id = $1 AND user_id = $2"
+    )
+    .bind(plan_id)
+    .bind(user_id)
+    .fetch_optional(&mut **tx)
+    .await?;
+
+    if owned.is_none() {
+        return Err(AppError::NotFound("套餐不存在".to_string()));
+    }
+
+    Ok(())
+}
+
 /// 执行业务操作：根据 entity_type 和 operation_type 写入数据库
 async fn execute_operation(
     tx: &mut Transaction<'_, sqlx::Postgres>,
@@ -425,6 +446,9 @@ async fn execute_operation(
             }
         }
         ("plan", "update") => {
+            // plan_items 本身不带 user_id，先确认套餐属于当前用户，否则可跨用户改写
+            require_plan_owner(tx, user_id, id).await?;
+
             if let Some(name) = op.data["name"].as_str() {
                 sqlx::query("UPDATE meal_plans SET name = $1 WHERE id = $2 AND user_id = $3")
                     .bind(name)
@@ -458,6 +482,8 @@ async fn execute_operation(
             }
         }
         ("plan", "delete") => {
+            require_plan_owner(tx, user_id, id).await?;
+
             sqlx::query("DELETE FROM plan_items WHERE plan_id = $1")
                 .bind(id)
                 .execute(&mut **tx)
