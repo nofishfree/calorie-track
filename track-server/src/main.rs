@@ -2,12 +2,9 @@ use axum::{
     routing::{get, post, put},
     Router,
 };
-use std::collections::HashMap;
 use std::env;
-use std::sync::{Arc, Mutex};
 use tower_http::cors::{CorsLayer, Any};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-use uuid::Uuid;
 
 mod auth;
 mod database;
@@ -29,7 +26,6 @@ use handlers::{
     plans::{get_plans, get_plan, create_plan, update_plan, delete_plan},
     sync::{get_sync_changes, upload_sync_operation, versioned_sync, AppState},
 };
-use crate::models::SyncOperationRequest;
 use middleware::auth_middleware;
 
 #[tokio::main]
@@ -43,6 +39,17 @@ async fn main() -> anyhow::Result<()> {
         )
         .with(tracing_subscriber::fmt::layer())
         .init();
+
+    let jwt_secret = env::var("JWT_SECRET").map_err(|_| {
+        anyhow::anyhow!(
+            "JWT_SECRET must be set. Generate one with: openssl rand -base64 32"
+        )
+    })?;
+    if jwt_secret.len() < 32 {
+        return Err(anyhow::anyhow!(
+            "JWT_SECRET must be at least 32 bytes. Generate one with: openssl rand -base64 32"
+        ));
+    }
 
     let pool = database::create_pool().await
         .map_err(|e| {
@@ -67,14 +74,9 @@ async fn main() -> anyhow::Result<()> {
 
     tracing::info!("Database migrations completed");
 
-    let jwt_secret = env::var("JWT_SECRET").unwrap_or_else(|_| "default-secret-key".to_string());
-
-    let operation_queues: Arc<Mutex<HashMap<Uuid, Vec<SyncOperationRequest>>>> =
-        Arc::new(Mutex::new(HashMap::new()));
-
     let app_state = AppState {
         pool: pool.clone(),
-        operation_queues,
+        jwt_secret: jwt_secret.clone(),
     };
 
     let public_routes = Router::new()

@@ -54,9 +54,16 @@ cp .env.example .env
 
 ```env
 DATABASE_URL=postgresql://username:password@localhost/calorie_track
-JWT_SECRET=your-secret-key-change-this-in-production
+# Generate with: openssl rand -base64 32
+JWT_SECRET=replace-with-at-least-32-byte-secret
 HOST=0.0.0.0
 PORT=3000
+```
+
+`JWT_SECRET` 是必填项，长度必须至少为 32 字节。可使用以下命令生成：
+
+```bash
+openssl rand -base64 32
 ```
 
 ### 3. 设置数据库

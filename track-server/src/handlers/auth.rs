@@ -3,7 +3,9 @@ use axum::{
     response::Json,
 };
 use bcrypt::{hash, verify, DEFAULT_COST};
-use sqlx::{PgPool, FromRow};
+use rand::Rng;
+use sqlx::{FromRow, PgPool};
+use std::env;
 use uuid::Uuid;
 
 use crate::auth::{create_jwt, AuthContext};
@@ -38,6 +40,7 @@ pub async fn get_data_version(pool: &PgPool, user_id: Uuid) -> i64 {
 
 pub async fn register(
     State(pool): State<PgPool>,
+    State(jwt_secret): State<String>,
     Json(req): Json<CreateUserRequest>,
 ) -> AppResult<Json<ApiResponse<LoginResponse>>> {
     // 检查邮箱是否已注册
@@ -75,7 +78,7 @@ pub async fn register(
 
     let data_version = get_data_version(&pool, user_id).await;
 
-    let token = create_jwt(user_id)?;
+    let token = create_jwt(user_id, &jwt_secret)?;
 
     let user_response = UserResponse {
         id: user.id,
@@ -97,6 +100,7 @@ pub async fn register(
 
 pub async fn login(
     State(pool): State<PgPool>,
+    State(jwt_secret): State<String>,
     Json(req): Json<LoginRequest>,
 ) -> AppResult<Json<ApiResponse<LoginResponse>>> {
     // 查找用户
@@ -119,7 +123,7 @@ pub async fn login(
     }
 
     // 创建 JWT token
-    let token = create_jwt(user.id)?;
+    let token = create_jwt(user.id, &jwt_secret)?;
 
     let data_version = get_data_version(&pool, user.id).await;
 
@@ -144,12 +148,45 @@ pub async fn login(
 }
 
 pub async fn forgot_password(
-    State(_pool): State<PgPool>,
+    State(pool): State<PgPool>,
     Json(req): Json<ForgotPasswordRequest>,
 ) -> AppResult<Json<ApiResponse<SuccessResponse>>> {
-    // 简化实现：仅记录邮箱，实际应发送重置邮件
-    // 为避免泄露邮箱是否注册，统一返回成功
-    tracing::info!("Password reset requested for email: {}", req.email);
+    let code = format!("{:06}", rand::thread_rng().gen_range(0..1_000_000));
+    let code_hash = hash(&code, DEFAULT_COST)?;
+    let user: Option<(Uuid,)> = sqlx::query_as("SELECT id FROM users WHERE email = $1")
+        .bind(&req.email)
+        .fetch_optional(&pool)
+        .await?;
+
+    if let Some((user_id,)) = user {
+        sqlx::query(
+            "UPDATE password_reset_codes
+             SET used_at = NOW()
+             WHERE user_id = $1 AND used_at IS NULL",
+        )
+        .bind(user_id)
+        .execute(&pool)
+        .await?;
+
+        let expires_at = chrono::Utc::now() + chrono::Duration::minutes(15);
+
+        sqlx::query(
+            "INSERT INTO password_reset_codes (user_id, code_hash, expires_at)
+             VALUES ($1, $2, $3)",
+        )
+        .bind(user_id)
+        .bind(&code_hash)
+        .bind(expires_at)
+        .execute(&pool)
+        .await?;
+
+        // TODO: 接入邮件服务，将验证码发送给用户。
+        if env::var("PASSWORD_RESET_DEBUG_LOG").as_deref() == Ok("1") {
+            tracing::warn!("Password reset debug code for {}: {}", req.email, code);
+        }
+    }
+
+    // 为避免泄露邮箱是否注册，统一返回成功。
 
     Ok(Json(ApiResponse {
         data: SuccessResponse { success: true },
@@ -160,30 +197,48 @@ pub async fn reset_password(
     State(pool): State<PgPool>,
     Json(req): Json<ResetPasswordRequest>,
 ) -> AppResult<Json<ApiResponse<SuccessResponse>>> {
-    // 简化实现：验证码固定为 "000000"（实际应使用邮件发送的验证码）
-    if req.code != "000000" {
+    let mut tx = pool.begin().await?;
+    let user: Option<(Uuid,)> = sqlx::query_as("SELECT id FROM users WHERE email = $1")
+        .bind(&req.email)
+        .fetch_optional(&mut *tx)
+        .await?;
+    let (user_id,) = user.ok_or_else(|| AppError::Validation("验证码无效".to_string()))?;
+
+    let reset_code: Option<(Uuid, String)> = sqlx::query_as(
+        "SELECT id, code_hash
+         FROM password_reset_codes
+         WHERE user_id = $1 AND used_at IS NULL AND expires_at > NOW()
+         ORDER BY created_at DESC
+         LIMIT 1
+         FOR UPDATE",
+    )
+    .bind(user_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let (code_id, code_hash) =
+        reset_code.ok_or_else(|| AppError::Validation("验证码无效".to_string()))?;
+
+    let is_valid = verify(&req.code, &code_hash)
+        .map_err(|_| AppError::Validation("验证码无效".to_string()))?;
+    if !is_valid {
         return Err(AppError::Validation("验证码无效".to_string()));
     }
 
-    // 检查用户是否存在
-    let user_exists: Option<(Uuid,)> = sqlx::query_as(
-        "SELECT id FROM users WHERE email = $1"
-    )
-    .bind(&req.email)
-    .fetch_optional(&pool)
-    .await?;
-
-    if user_exists.is_none() {
-        return Err(AppError::NotFound("用户不存在".to_string()));
-    }
-
-    // 更新密码
     let password_hash = hash(&req.new_password, DEFAULT_COST)?;
-    sqlx::query("UPDATE users SET password_hash = $1 WHERE email = $2")
+    sqlx::query("UPDATE users SET password_hash = $1 WHERE id = $2")
         .bind(&password_hash)
-        .bind(&req.email)
-        .execute(&pool)
+        .bind(user_id)
+        .execute(&mut *tx)
         .await?;
+    sqlx::query(
+        "UPDATE password_reset_codes
+         SET used_at = NOW()
+         WHERE id = $1 AND used_at IS NULL",
+    )
+    .bind(code_id)
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
 
     Ok(Json(ApiResponse {
         data: SuccessResponse { success: true },

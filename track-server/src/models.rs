@@ -362,6 +362,7 @@ pub struct VersionedSyncResponse {
     pub server_version: i64,
     pub operations: Vec<OperationLog>,
     pub head_processed: bool,
+    pub head_rejected: Option<String>,
     pub missing_avatar_hash: Option<String>,  // 如果头像哈希值不存在于数据库，返回给前端
 }
 

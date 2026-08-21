@@ -1,10 +1,9 @@
 use axum::{
     extract::FromRequestParts,
-    http::{header::AUTHORIZATION, request::Parts, StatusCode},
+    http::{request::Parts, StatusCode},
 };
-use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
+use jsonwebtoken::{encode, EncodingKey, Header};
 use serde::{Deserialize, Serialize};
-use std::env;
 use uuid::Uuid;
 
 use crate::error::AppResult;
@@ -24,31 +23,15 @@ where
     type Rejection = StatusCode;
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
-        let auth_header = parts
-            .headers
-            .get(AUTHORIZATION)
-            .and_then(|header| header.to_str().ok());
-
-        let token = match auth_header {
-            Some(header) if header.starts_with("Bearer ") => {
-                header[7..].trim()
-            }
-            _ => return Err(StatusCode::UNAUTHORIZED),
-        };
-
-        match decode_jwt(token) {
-            Ok(claims) => {
-                let user_id = Uuid::parse_str(&claims.sub)
-                    .map_err(|_| StatusCode::UNAUTHORIZED)?;
-                Ok(AuthContext { user_id, is_admin: false })
-            }
-            Err(_) => Err(StatusCode::UNAUTHORIZED),
-        }
+        parts
+            .extensions
+            .get::<AuthContext>()
+            .cloned()
+            .ok_or(StatusCode::UNAUTHORIZED)
     }
 }
 
-pub fn create_jwt(user_id: Uuid) -> AppResult<String> {
-    let secret = env::var("JWT_SECRET").unwrap_or_else(|_| "default-secret-key".to_string());
+pub fn create_jwt(user_id: Uuid, secret: &str) -> AppResult<String> {
     let expiration = chrono::Utc::now()
         .checked_add_signed(chrono::Duration::days(7))
         .expect("valid timestamp")
@@ -66,15 +49,4 @@ pub fn create_jwt(user_id: Uuid) -> AppResult<String> {
     )?;
 
     Ok(token)
-}
-
-pub fn decode_jwt(token: &str) -> AppResult<Claims> {
-    let secret = env::var("JWT_SECRET").unwrap_or_else(|_| "default-secret-key".to_string());
-    let token_data = decode::<Claims>(
-        token,
-        &DecodingKey::from_secret(secret.as_ref()),
-        &Validation::default(),
-    )?;
-
-    Ok(token_data.claims)
 }
