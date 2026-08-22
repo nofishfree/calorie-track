@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { useAuthStore } from './authStore'
 import { syncAPI } from '../api'
-import type { VersionedSyncRequest, SyncOperationRequest } from '../types'
+import type { SyncOperationRequest } from '../types'
 
 const LOCAL_ACCOUNT_ID = 'local-account'
 
@@ -34,6 +34,53 @@ interface OperationState {
 
 const generateId = (): string => crypto.randomUUID()
 
+const hasUsableDataId = (data: unknown): data is Record<string, unknown> => {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    return false
+  }
+  const id = (data as Record<string, unknown>).id
+  return typeof id === 'string' && id.length > 0
+}
+
+export const migrateOperationState = (persistedState: unknown): { queues: Record<string, OperationItem[]> } => {
+  if (!persistedState || typeof persistedState !== 'object') {
+    return { queues: {} }
+  }
+
+  const persistedQueues = (persistedState as { queues?: unknown }).queues
+  if (!persistedQueues || typeof persistedQueues !== 'object') {
+    return { queues: {} }
+  }
+
+  const queues: Record<string, OperationItem[]> = {}
+  for (const [userId, rawQueue] of Object.entries(persistedQueues)) {
+    if (!Array.isArray(rawQueue)) {
+      continue
+    }
+
+    queues[userId] = rawQueue.flatMap((rawOperation) => {
+      if (!rawOperation || typeof rawOperation !== 'object') {
+        return []
+      }
+
+      const operation = rawOperation as Record<string, unknown>
+      if (!hasUsableDataId(operation.data)) {
+        return []
+      }
+
+      return [{
+        ...operation,
+        id: typeof operation.id === 'string' && operation.id.length > 0
+          ? operation.id
+          : generateId(),
+        data: operation.data,
+      } as OperationItem]
+    })
+  }
+
+  return { queues }
+}
+
 export const useOperationStore = create<OperationState>()(
   persist(
     (set, get) => ({
@@ -43,6 +90,11 @@ export const useOperationStore = create<OperationState>()(
       pollingTimer: null,
 
       addOperation: (entity_type, data, operation_type = 'add') => {
+        if (!hasUsableDataId(data)) {
+          console.error('Cannot enqueue operation without a string data.id', { entity_type, data, operation_type })
+          return
+        }
+
         const { currentAccountId, isLocalAccount } = useAuthStore.getState()
         const userId = isLocalAccount ? LOCAL_ACCOUNT_ID : (currentAccountId || LOCAL_ACCOUNT_ID)
 
@@ -66,6 +118,11 @@ export const useOperationStore = create<OperationState>()(
       },
 
       deleteOperation: (entity_type, data) => {
+        if (!hasUsableDataId(data)) {
+          console.error('Cannot enqueue delete operation without a string data.id', { entity_type, data })
+          return
+        }
+
         const { currentAccountId, isLocalAccount } = useAuthStore.getState()
         const userId = isLocalAccount ? LOCAL_ACCOUNT_ID : (currentAccountId || LOCAL_ACCOUNT_ID)
 
@@ -154,98 +211,99 @@ export const useOperationStore = create<OperationState>()(
         if (isLocalAccount || !currentAccountId) return
 
         const targetUserId = currentAccountId
-        const clientVersion = user?.data_version || 0
-
-        // 获取队头操作
-        const queue = get().queues[targetUserId] || []
-        let headOperation: SyncOperationRequest | null = null
-        let headOperationId: string | null = null
-
-        if (queue.length > 0) {
-          const head = queue[0]
-          headOperation = {
-            id: head.id,
-            operation_type: head.operation_type,
-            entity_type: head.entity_type,
-            data: head.data,
-          }
-          headOperationId = head.id
-        }
+        let clientVersion = user?.data_version || 0
 
         set({ isSyncing: true })
 
         try {
-          const request: VersionedSyncRequest = {
-            client_version: clientVersion,
-            head_operation: headOperation,
-          }
+          for (let processedCount = 0; processedCount < 20; processedCount += 1) {
+            const queue = get().queues[targetUserId] || []
+            const head = queue[0]
+            const headOperation: SyncOperationRequest | null = head
+              ? {
+                  id: head.id,
+                  operation_type: head.operation_type,
+                  entity_type: head.entity_type,
+                  data: head.data,
+                }
+              : null
+            const headOperationId = head?.id || null
+            const response = await syncAPI.versionedSync({
+              client_version: clientVersion,
+              head_operation: headOperation,
+            })
 
-          const response = await syncAPI.versionedSync(request)
-
-          // 如果头像哈希值不存在于数据库，需要先上传头像
-          if (response.missing_avatar_hash) {
-            const { avatarStore } = await import('./avatarStore')
-            const avatarHash = response.missing_avatar_hash
-            const avatarData = await avatarStore.getAvatar(avatarHash)
-            if (avatarData) {
-              // 上传头像到服务器
-              await avatarStore.syncAvatarToServer(avatarHash, avatarData)
-            }
-            // 不处理操作，等待下次轮询重试
-            set({ isSyncing: false })
-            return
-          }
-
-          // 仅当后端确认操作已记录在日志中时，才从队列中移除
-          if (response.head_processed && headOperationId) {
-            get().removeOperation(targetUserId, headOperationId)
-          }
-
-          // 处理增量同步数据：将服务器返回的操作应用到本地 store
-          // 必须在更新数据版本之前完成：若应用失败而版本已推进，这批操作将永远不会被重新下发
-          if (response.operations && response.operations.length > 0) {
-            // 动态导入各 store（避免循环依赖）
-            const { useFoodStore } = await import('./foodStore')
-            const { useRecordStore } = await import('./recordStore')
-            const { usePlanStore } = await import('./planStore')
-            const { useGoalStore } = await import('./goalStore')
-
-            for (const op of response.operations) {
-              // 如果是队头操作且已处理，跳过（避免重复应用，基于操作 ID 判断）
-              if (headOperationId && op.id === headOperationId && response.head_processed) {
-                continue
+            // 如果头像哈希值不存在于数据库，需要先上传头像
+            if (response.missing_avatar_hash) {
+              const { avatarStore } = await import('./avatarStore')
+              const avatarHash = response.missing_avatar_hash
+              const avatarData = await avatarStore.getAvatar(avatarHash)
+              if (avatarData) {
+                await avatarStore.syncAvatarToServer(avatarHash, avatarData)
               }
+              break
+            }
 
-              // 根据实体类型分发到对应的 store
-              const data = op.data as Record<string, unknown>
-              switch (op.entity_type) {
-                case 'food':
-                  useFoodStore.getState().applyRemoteOperation(op.operation_type, data)
-                  break
-                case 'record':
-                  useRecordStore.getState().applyRemoteOperation(op.operation_type, data)
-                  break
-                case 'plan':
-                  usePlanStore.getState().applyRemoteOperation(op.operation_type, data)
-                  break
-                case 'goal':
-                  useGoalStore.getState().applyRemoteOperation(op.operation_type, data)
-                  break
-                case 'account':
-                  if (op.operation_type === 'update') {
-                    useAuthStore.getState().updateUser({
-                      username: data.username as string | undefined,
-                      avatar: data.avatar as string | undefined,
-                    })
-                  }
-                  break
+            if (response.head_processed && headOperationId) {
+              get().removeOperation(targetUserId, headOperationId)
+            } else if (response.head_rejected && headOperationId) {
+              console.error('Sync operation rejected', response.head_rejected, headOperation)
+              get().removeOperation(targetUserId, headOperationId)
+            }
+
+            // 增量操作全部应用成功后，才推进本地数据版本
+            if (response.operations && response.operations.length > 0) {
+              // 动态导入各 store（避免循环依赖）
+              const { useFoodStore } = await import('./foodStore')
+              const { useRecordStore } = await import('./recordStore')
+              const { usePlanStore } = await import('./planStore')
+              const { useGoalStore } = await import('./goalStore')
+
+              for (const op of response.operations) {
+                // 如果是队头操作且已处理，跳过（避免重复应用，基于操作 ID 判断）
+                if (headOperationId && op.id === headOperationId && response.head_processed) {
+                  continue
+                }
+
+                // 根据实体类型分发到对应的 store
+                const data = op.data as Record<string, unknown>
+                switch (op.entity_type) {
+                  case 'food':
+                    useFoodStore.getState().applyRemoteOperation(op.operation_type, data)
+                    break
+                  case 'record':
+                    useRecordStore.getState().applyRemoteOperation(op.operation_type, data)
+                    break
+                  case 'plan':
+                    usePlanStore.getState().applyRemoteOperation(op.operation_type, data)
+                    break
+                  case 'goal':
+                    useGoalStore.getState().applyRemoteOperation(op.operation_type, data)
+                    break
+                  case 'account':
+                    if (op.operation_type === 'update') {
+                      useAuthStore.getState().updateUser({
+                        username: data.username as string | undefined,
+                        avatar: data.avatar as string | undefined,
+                      })
+                    }
+                    break
+                }
               }
             }
-          }
 
-          // 增量操作全部应用成功后，才推进本地数据版本
-          if (response.server_version > clientVersion) {
-            useAuthStore.getState().updateDataVersion(response.server_version)
+            if (response.server_version > clientVersion) {
+              clientVersion = response.server_version
+              useAuthStore.getState().updateDataVersion(response.server_version)
+            }
+
+            if (
+              !headOperation
+              || (!response.head_processed && !response.head_rejected)
+              || (get().queues[targetUserId] || []).length === 0
+            ) {
+              break
+            }
           }
 
           if (get().lastSyncError) {
@@ -264,6 +322,8 @@ export const useOperationStore = create<OperationState>()(
     }),
     {
       name: 'operation-queue-storage',
+      version: 2,
+      migrate: migrateOperationState,
       partialize: (state) => ({
         // 只持久化队列数据，不持久化 timer 和同步状态
         queues: state.queues,

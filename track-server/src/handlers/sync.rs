@@ -2,9 +2,7 @@ use axum::{
     extract::{FromRef, Query, State},
     response::Json,
 };
-use sqlx::{PgPool, FromRow, Transaction};
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use sqlx::{FromRow, PgPool, Transaction};
 use uuid::Uuid;
 
 use crate::auth::AuthContext;
@@ -68,11 +66,10 @@ async fn insert_plan_items_from_json(
     Ok(())
 }
 
-// 全局应用状态（包含数据库连接和操作队列缓存）
+// 全局应用状态
 #[derive(Clone)]
 pub struct AppState {
     pub pool: PgPool,
-    pub operation_queues: Arc<Mutex<HashMap<Uuid, Vec<SyncOperationRequest>>>>,
 }
 
 impl FromRef<AppState> for PgPool {
@@ -81,23 +78,30 @@ impl FromRef<AppState> for PgPool {
     }
 }
 
-type OperationQueues = Arc<Mutex<HashMap<Uuid, Vec<SyncOperationRequest>>>>;
-
-/// 获取操作队列锁：互斥锁被投毒（此前持锁线程 panic）时恢复内部数据，
-/// 避免单次 panic 让后续所有同步请求永久失败
-fn lock_queues(
-    queues: &OperationQueues,
-) -> std::sync::MutexGuard<'_, HashMap<Uuid, Vec<SyncOperationRequest>>> {
-    queues.lock().unwrap_or_else(|poisoned| {
-        tracing::error!("Operation queue mutex was poisoned, recovering");
-        poisoned.into_inner()
-    })
-}
-
 impl std::ops::Deref for AppState {
     type Target = PgPool;
     fn deref(&self) -> &Self::Target {
         &self.pool
+    }
+}
+
+enum OperationError {
+    Permanent(String),
+    Transient(sqlx::Error),
+}
+
+impl From<sqlx::Error> for OperationError {
+    fn from(error: sqlx::Error) -> Self {
+        Self::Transient(error)
+    }
+}
+
+impl From<AppError> for OperationError {
+    fn from(error: AppError) -> Self {
+        match error {
+            AppError::Database(error) => Self::Transient(error),
+            error => Self::Permanent(error.to_string()),
+        }
     }
 }
 
@@ -209,52 +213,92 @@ pub async fn versioned_sync(
     let user_id = auth.user_id;
     let client_version = req.client_version;
     let pool = state.pool.clone();
-    let queues = state.operation_queues.clone();
-
-    // 1. 获取服务器当前数据版本
-    let server_version = max_serial_number(&pool, user_id).await?;
-
-    // 2. 如果有队头操作，检查该操作是否已在 operation_logs 中（按操作 id 精确匹配，避免重复处理）
     let mut head_processed = false;
+    let mut head_rejected = None;
 
     if let Some(head_op) = &req.head_operation {
-        // 使用前端生成的操作 ID 查重，写入 operation_logs.id
+        let mut tx = pool.begin().await?;
+
+        // 锁定用户行，保证同一用户的序列号在并发同步请求中串行分配。
+        sqlx::query("SELECT id FROM users WHERE id = $1 FOR UPDATE")
+            .bind(user_id)
+            .fetch_one(&mut *tx)
+            .await?;
+
         let exists: (bool,) = sqlx::query_as(
             "SELECT EXISTS(SELECT 1 FROM operation_logs WHERE user_id = $1 AND id = $2)"
         )
         .bind(user_id)
         .bind(head_op.id)
-        .fetch_one(&pool)
+        .fetch_one(&mut *tx)
         .await?;
 
         if exists.0 {
-            // 已在操作日志中，确认已记录，前端可删除该操作
+            tx.commit().await?;
             head_processed = true;
         } else {
-            // 不在数据库中，加入内存队列缓存，异步处理
-            {
-                let mut queues_map = lock_queues(&queues);
-                let user_queue = queues_map.entry(user_id).or_default();
-                user_queue.push(head_op.clone());
-            }
-
-            let pool_clone = pool.clone();
-            let queues_clone = queues.clone();
-            tokio::spawn(async move {
-                if let Err(e) = process_operation_queue(&pool_clone, user_id, queues_clone).await {
-                    tracing::error!(
-                        user_id = %user_id,
-                        "Async operation queue processing failed: {:?}", e
-                    );
+            let result = async {
+                if !is_supported_operation(head_op) {
+                    return Err(OperationError::Permanent("不支持的同步操作类型".to_string()));
                 }
-            });
 
-            // 操作尚未确认写入日志，返回 false，前端保留该操作
-            head_processed = false;
+                let max_serial: MaxSerialRow = sqlx::query_as(
+                    "SELECT COALESCE(MAX(serial_number), 0) as max_serial
+                     FROM operation_logs WHERE user_id = $1"
+                )
+                .bind(user_id)
+                .fetch_one(&mut *tx)
+                .await?;
+                let next_serial = max_serial.max_serial.unwrap_or(0) + 1;
+
+                execute_operation(&mut tx, user_id, head_op).await?;
+
+                sqlx::query(
+                    "INSERT INTO operation_logs
+                     (id, user_id, serial_number, operation_type, entity_type, data, created_at)
+                     VALUES ($1, $2, $3, $4, $5, $6, NOW())"
+                )
+                .bind(head_op.id)
+                .bind(user_id)
+                .bind(next_serial)
+                .bind(&head_op.operation_type)
+                .bind(&head_op.entity_type)
+                .bind(&head_op.data)
+                .execute(&mut *tx)
+                .await?;
+
+                Ok::<(), OperationError>(())
+            }
+            .await;
+
+            match result {
+                Ok(()) => {
+                    tx.commit().await?;
+                    head_processed = true;
+                }
+                Err(OperationError::Permanent(reason)) => {
+                    tracing::warn!(
+                        user_id = %user_id,
+                        operation_id = %head_op.id,
+                        entity_type = %head_op.entity_type,
+                        operation_type = %head_op.operation_type,
+                        reason = %reason,
+                        "Sync operation rejected"
+                    );
+                    tx.rollback().await?;
+                    head_rejected = Some(reason);
+                }
+                Err(OperationError::Transient(error)) => {
+                    tx.rollback().await?;
+                    return Err(AppError::Database(error));
+                }
+            }
         }
     }
 
-    // 3. 如果服务器版本大于客户端版本，返回增量数据
+    let server_version = max_serial_number(&pool, user_id).await?;
+
+    // 如果服务器版本大于客户端版本，返回增量数据
     let operations = if server_version > client_version {
         sqlx::query_as(
             "SELECT id, user_id, serial_number, operation_type, entity_type, data, created_at
@@ -274,6 +318,7 @@ pub async fn versioned_sync(
         server_version,
         operations,
         head_processed,
+        head_rejected,
         missing_avatar_hash: None,
     };
 
@@ -306,11 +351,14 @@ async fn execute_operation(
     tx: &mut Transaction<'_, sqlx::Postgres>,
     user_id: Uuid,
     op: &SyncOperationRequest,
-) -> AppResult<()> {
+) -> Result<(), OperationError> {
     // 从 data.id 提取实体 ID
-    let id_str = op.data["id"].as_str().unwrap_or("");
+    let id_str = op.data["id"]
+        .as_str()
+        .filter(|id| !id.is_empty())
+        .ok_or_else(|| OperationError::Permanent("缺少有效的 data.id".to_string()))?;
     let id = Uuid::parse_str(id_str)
-        .map_err(|_| AppError::Validation(format!("无效的实体 ID 格式 (data.id): {}", id_str)))?;
+        .map_err(|_| OperationError::Permanent("无效的 data.id".to_string()))?;
 
     match (op.entity_type.as_str(), op.operation_type.as_str()) {
         // ============ Food 操作 ============
@@ -574,87 +622,14 @@ async fn execute_operation(
             .await?;
         }
 
-        // 其他组合不处理：记录日志，避免操作被静默丢弃
+        // 不支持的组合必须显式拒绝，避免操作永久卡在队头
         (entity_type, operation_type) => {
-            tracing::warn!(
-                user_id = %user_id,
-                entity_type,
-                operation_type,
-                "Unsupported entity/operation combination, operation skipped"
-            );
+            return Err(OperationError::Permanent(format!(
+                "不支持的同步操作组合: {} / {}",
+                entity_type, operation_type
+            )));
         }
     }
-
-    Ok(())
-}
-
-/// 处理用户的操作队列：先执行业务操作，再记录操作日志（使用事务保证一致性）
-async fn process_operation_queue(
-    pool: &PgPool,
-    user_id: Uuid,
-    queues: OperationQueues,
-) -> AppResult<()> {
-    let operations: Vec<SyncOperationRequest> = {
-        let mut queues_map = lock_queues(&queues);
-        match queues_map.get_mut(&user_id) {
-            Some(q) => q.drain(..).collect(),
-            None => return Ok(()),
-        }
-    };
-
-    if operations.is_empty() {
-        return Ok(());
-    }
-
-    let mut next_serial = max_serial_number(pool, user_id).await? + 1;
-
-    // 开启事务，批量处理所有操作
-    let mut tx = pool.begin().await?;
-
-    for op in &operations {
-        if !is_supported_operation(op) {
-            tracing::warn!(
-                user_id = %user_id,
-                operation_id = %op.id,
-                entity_type = %op.entity_type,
-                operation_type = %op.operation_type,
-                "Unsupported entity/operation type, operation skipped"
-            );
-            continue;
-        }
-
-        // 1. 执行业务操作（写入业务表）
-        // 出错时回滚整个事务并向上传递错误：操作不会写入 operation_logs，
-        // 客户端下次轮询会重试，而不是静默丢弃该操作
-        execute_operation(&mut tx, user_id, op).await.map_err(|e| {
-            tracing::error!(
-                user_id = %user_id,
-                operation_id = %op.id,
-                entity_type = %op.entity_type,
-                operation_type = %op.operation_type,
-                "Failed to execute sync operation: {:?}", e
-            );
-            e
-        })?;
-
-        // 2. 记录操作日志（使用前端生成的操作 ID，保证幂等性）
-        sqlx::query(
-            "INSERT INTO operation_logs (id, user_id, serial_number, operation_type, entity_type, data, created_at)
-             VALUES ($1, $2, $3, $4, $5, $6, NOW())"
-        )
-        .bind(op.id)
-        .bind(user_id)
-        .bind(next_serial)
-        .bind(&op.operation_type)
-        .bind(&op.entity_type)
-        .bind(&op.data)
-        .execute(&mut *tx)
-        .await?;
-
-        next_serial += 1;
-    }
-
-    tx.commit().await?;
 
     Ok(())
 }

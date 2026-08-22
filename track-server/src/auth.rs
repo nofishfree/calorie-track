@@ -128,7 +128,7 @@ mod tests {
 
     #[tokio::test]
     async fn jwt_roundtrip_and_claim_expiry() {
-        with_secret("test-secret", || async {
+        with_secret("test-secret-for-jwt-tests-32-bytes", || async {
             let user_id = Uuid::new_v4();
             let before = chrono::Utc::now().timestamp() as usize;
             let token = create_jwt(user_id).expect("create JWT");
@@ -142,20 +142,20 @@ mod tests {
 
     #[tokio::test]
     async fn jwt_rejects_tampered_garbage_and_other_secrets() {
-        with_secret("test-secret", || async {
+        with_secret("test-secret-for-jwt-tests-32-bytes", || async {
             let token = create_jwt(Uuid::new_v4()).expect("create JWT");
             assert!(decode_jwt("not-a-token").is_err());
             let mut tampered = token.clone();
             tampered.push('x');
             assert!(decode_jwt(&tampered).is_err());
-            env::set_var("JWT_SECRET", "different-secret");
+            env::set_var("JWT_SECRET", "different-secret-for-jwt-tests-32");
             assert!(decode_jwt(&token).is_err());
         }).await;
     }
 
     #[tokio::test]
     async fn auth_context_extractor_validates_bearer_and_uuid_subject() {
-        with_secret("test-secret", || async {
+        with_secret("test-secret-for-jwt-tests-32-bytes", || async {
             let user_id = Uuid::new_v4();
             let token = create_jwt(user_id).expect("create JWT");
 

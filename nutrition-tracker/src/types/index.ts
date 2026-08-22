@@ -232,7 +232,7 @@ export interface VersionedSyncResponse {
   server_version: number
   operations: OperationLog[]
   head_processed: boolean
+  head_rejected?: string
   missing_avatar_hash?: string  // 如果头像哈希值不存在于数据库，返回给前端
 }
-
 

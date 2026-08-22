@@ -4,12 +4,9 @@ use axum::{
     routing::{get, post, put},
     Router,
 };
-use std::collections::HashMap;
 use std::env;
-use std::sync::{Arc, Mutex};
 use tower_http::cors::CorsLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-use uuid::Uuid;
 
 mod auth;
 mod database;
@@ -32,7 +29,6 @@ use handlers::{
     plans::{get_plans, get_plan, create_plan, update_plan, delete_plan},
     sync::{get_sync_changes, upload_sync_operation, versioned_sync, AppState},
 };
-use crate::models::SyncOperationRequest;
 use middleware::auth_middleware;
 
 /// 请求体上限（头像为 base64 字符串，给出 4MB 余量）
@@ -83,12 +79,8 @@ async fn main() -> anyhow::Result<()> {
         )
     })?;
 
-    let operation_queues: Arc<Mutex<HashMap<Uuid, Vec<SyncOperationRequest>>>> =
-        Arc::new(Mutex::new(HashMap::new()));
-
     let app_state = AppState {
         pool: pool.clone(),
-        operation_queues,
     };
 
     let public_routes = Router::new()

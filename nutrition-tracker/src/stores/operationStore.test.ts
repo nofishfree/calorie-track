@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAuthStore } from './authStore'
-import { useOperationStore } from './operationStore'
+import { migrateOperationState, useOperationStore } from './operationStore'
 import { syncAPI } from '../api'
 
 vi.mock('../api', () => ({
@@ -20,7 +20,7 @@ function resetStores() {
     savedAccounts: [],
     currentAccountId: 'local-account',
   })
-  useOperationStore.setState({ queues: {}, isSyncing: false, pollingTimer: null })
+  useOperationStore.setState({ queues: {}, isSyncing: false, lastSyncError: null, pollingTimer: null })
 }
 
 describe('operation queue', () => {
@@ -45,6 +45,34 @@ describe('operation queue', () => {
     expect(useOperationStore.getState().getQueue(account.id)).toEqual([])
     useOperationStore.getState().clearQueue('local-account')
     expect(useOperationStore.getState().getQueue('local-account')).toEqual([])
+  })
+
+  it('rejects operations without a usable data id', () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    useOperationStore.getState().addOperation('food', { name: 'Missing id' })
+    useOperationStore.getState().deleteOperation('food', undefined)
+
+    expect(useOperationStore.getState().getQueue()).toEqual([])
+    expect(error).toHaveBeenCalledTimes(2)
+    error.mockRestore()
+  })
+
+  it('migrates persisted queues by dropping invalid data and backfilling operation ids', () => {
+    const migrated = migrateOperationState({
+      queues: {
+        'user-1': [
+          { operation_type: 'add', entity_type: 'food', data: { name: 'invalid' } },
+          { operation_type: 'add', entity_type: 'food', data: { id: 'food-1' } },
+          { id: '', operation_type: 'delete', entity_type: 'food', data: { id: 'food-2' } },
+        ],
+      },
+    })
+
+    expect(migrated.queues['user-1']).toHaveLength(2)
+    expect(migrated.queues['user-1'][0].id).toEqual(expect.any(String))
+    expect(migrated.queues['user-1'][1].id).toEqual(expect.any(String))
+    expect(migrated.queues['user-1'].every((operation) => operation.data.id)).toBe(true)
   })
 
   it('does not poll local accounts, avoids double starts, and stops its timer', () => {
@@ -138,7 +166,7 @@ describe('operation sync', () => {
     const avatar = await import('./avatarStore')
     const getAvatar = vi.spyOn(avatar.avatarStore, 'getAvatar').mockResolvedValue('base64-data')
     const upload = vi.spyOn(avatar.avatarStore, 'syncAvatarToServer').mockResolvedValue(undefined)
-    useOperationStore.getState().addOperation('account', { avatar: 'hash-1' })
+    useOperationStore.getState().addOperation('account', { id: account.id, avatar: 'hash-1' })
     vi.mocked(syncAPI.versionedSync).mockResolvedValue({
       server_version: 2,
       operations: [],
@@ -151,5 +179,49 @@ describe('operation sync', () => {
     expect(getAvatar).toHaveBeenCalledWith('hash-1')
     expect(upload).toHaveBeenCalledWith('hash-1', 'base64-data')
     expect(useOperationStore.getState().getQueue()).toHaveLength(1)
+  })
+
+  it('removes and reports a rejected head operation', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    useOperationStore.getState().addOperation('food', { id: 'rejected-food' })
+    const head = useOperationStore.getState().getQueue()[0]
+    vi.mocked(syncAPI.versionedSync).mockResolvedValue({
+      server_version: 2,
+      operations: [],
+      head_processed: false,
+      head_rejected: '不支持的同步操作类型',
+    })
+
+    await useOperationStore.getState().performSync()
+
+    expect(useOperationStore.getState().getQueue()).toEqual([])
+    expect(error).toHaveBeenCalledWith(
+      'Sync operation rejected',
+      '不支持的同步操作类型',
+      expect.objectContaining({ id: head.id }),
+    )
+    error.mockRestore()
+  })
+
+  it('drains multiple processed operations in one sync run', async () => {
+    useOperationStore.getState().addOperation('food', { id: 'food-1' })
+    useOperationStore.getState().addOperation('food', { id: 'food-2' })
+    vi.mocked(syncAPI.versionedSync)
+      .mockResolvedValueOnce({
+        server_version: 3,
+        operations: [],
+        head_processed: true,
+      })
+      .mockResolvedValueOnce({
+        server_version: 4,
+        operations: [],
+        head_processed: true,
+      })
+
+    await useOperationStore.getState().performSync()
+
+    expect(syncAPI.versionedSync).toHaveBeenCalledTimes(2)
+    expect(useOperationStore.getState().getQueue()).toEqual([])
+    expect(useAuthStore.getState().user?.data_version).toBe(4)
   })
 })
