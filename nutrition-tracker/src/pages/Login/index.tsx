@@ -78,11 +78,6 @@ export default function LoginPage() {
     <div className={styles.container}>
       <BackButton className={styles.backBtn} onClick={handleBack} />
 
-      <div className={styles.header}>
-        <h1 className={styles.title}>营养追踪</h1>
-        <p className={styles.subtitle}>记录每日饮食，健康生活</p>
-      </div>
-
       <div className={styles.form}>
         <Input
           placeholder="邮箱"
