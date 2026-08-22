@@ -8,7 +8,6 @@ use axum::{
 use jsonwebtoken::{decode, DecodingKey, Validation};
 use uuid::Uuid;
 
-use crate::auth::AuthContext;
 use crate::models::Claims;
 
 pub async fn auth_middleware(
@@ -33,10 +32,8 @@ pub async fn auth_middleware(
             let user_id = Uuid::parse_str(&claims.sub)
                 .map_err(|_| StatusCode::UNAUTHORIZED)?;
 
-            request.extensions_mut().insert(AuthContext {
-                user_id,
-                is_admin: false,
-            });
+            // 将 user_id 添加到请求扩展中
+            request.extensions_mut().insert(user_id);
             Ok(next.run(request).await)
         }
         Err(_) => Err(StatusCode::UNAUTHORIZED),

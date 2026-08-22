@@ -277,6 +277,14 @@ pub async fn versioned_sync(
                     head_processed = true;
                 }
                 Err(OperationError::Permanent(reason)) => {
+                    tracing::warn!(
+                        user_id = %user_id,
+                        operation_id = %head_op.id,
+                        entity_type = %head_op.entity_type,
+                        operation_type = %head_op.operation_type,
+                        reason = %reason,
+                        "Sync operation rejected"
+                    );
                     tx.rollback().await?;
                     head_rejected = Some(reason);
                 }
