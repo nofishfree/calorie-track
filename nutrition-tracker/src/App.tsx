@@ -67,14 +67,14 @@ function AutoLogin() {
  * 全局 UI 行为容器：
  *  - 状态栏高度探测
  *  - 手势监听（右滑开 Profile、左滑关 Profile）
- *  - 监听路由变化：记录入口关系、自动关闭 Profile
+ *  - 监听路由变化：记录入口关系、自动关闭 Profile 抽屉
  *  - 监听返回按钮消息
  *  - 全局 Profile 抽屉
  */
 function GlobalUI() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { showProfileDrawer, setShowProfileDrawer, pushRouteEntry, isAuthRoute } = useUIStore()
+  const { showProfileDrawer, setShowProfileDrawer, pushRouteEntry } = useUIStore()
 
   // 用ref保存上一次的pathname，以便在变化时记录入口关系
   const prevPathRef = useRef<string>(location.pathname)
@@ -96,10 +96,8 @@ function GlobalUI() {
 
     // 只在路径真正变化时处理
     if (prevPath !== currentPath) {
-      // 3a. 自动关闭 Profile 抽屉（当导航到认证页面时）
-      if (isAuthRoute(currentPath)) {
-        setShowProfileDrawer(false)
-      }
+      // 3a. 自动关闭 Profile 抽屉（任何路由跳转都关闭）
+      setShowProfileDrawer(false)
 
       // 3b. 记录入口关系
       pushRouteEntry(currentPath, prevPath)
@@ -107,7 +105,7 @@ function GlobalUI() {
       // 3c. 更新 ref
       prevPathRef.current = currentPath
     }
-  }, [location.pathname, pushRouteEntry, setShowProfileDrawer, isAuthRoute])
+  }, [location.pathname, pushRouteEntry, setShowProfileDrawer])
 
   // 4. 监听返回按钮消息
   useEffect(() => {
