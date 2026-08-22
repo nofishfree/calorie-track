@@ -116,6 +116,11 @@ export const usePlanStore = create<PlanState>()(
 
       deleteLocalPlan: (id) => {
         const plan = get().localPlans.find(p => p.id === id)
+        if (!plan) {
+          // 本地无此套餐时不入队：服务端无法解析实体，操作会被静默丢弃
+          console.warn(`Skipped delete operation: no local plan with id ${id}`)
+          return
+        }
         set((state) => ({
           localPlans: state.localPlans.filter((plan) => plan.id !== id),
         }))

@@ -119,6 +119,47 @@ pub struct FoodData {
     pub user_id: Option<String>,
 }
 
+impl Default for FoodData {
+    fn default() -> Self {
+        FoodData {
+            id: String::new(),
+            name: String::new(),
+            num: 0.0,
+            calorie: 0.0,
+            calorie_unit: "kj".to_string(),
+            carbs_g: 0.0,
+            protein_g: 0.0,
+            fat_g: 0.0,
+            unit: "g".to_string(),
+            user_id: None,
+        }
+    }
+}
+
+impl FoodData {
+    /// 解析数据库中的食物快照，解析失败时回退为空数据
+    pub fn from_json(value: serde_json::Value) -> Self {
+        serde_json::from_value(value).unwrap_or_default()
+    }
+}
+
+impl From<&Food> for FoodData {
+    fn from(food: &Food) -> Self {
+        FoodData {
+            id: food.id.to_string(),
+            name: food.name.clone(),
+            num: food.num,
+            calorie: food.calorie,
+            calorie_unit: food.calorie_unit.clone(),
+            carbs_g: food.carbs_g,
+            protein_g: food.protein_g,
+            fat_g: food.fat_g,
+            unit: food.unit.clone(),
+            user_id: food.user_id.map(|u| u.to_string()),
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub struct CreateFoodRequest {
     pub id: String,
@@ -381,4 +422,61 @@ pub struct MessageResponse {
 #[derive(Debug, Serialize)]
 pub struct SuccessResponse {
     pub success: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn request_defaults_and_optional_fields_serde() {
+        let request: CreateGoalTemplateRequest = serde_json::from_value(serde_json::json!({
+            "name": "Daily",
+            "daily_goals": [{ "calorie_target": 2000 }]
+        }))
+        .expect("goal template request");
+        assert_eq!(request.template_type, "daily");
+        assert_eq!(request.cycle_days, 1);
+        assert_eq!(request.today_index, 0);
+        assert!(request.last_active_date.is_none());
+
+        let food: FoodData = serde_json::from_value(serde_json::json!({
+            "id": "food-1",
+            "name": "Rice",
+            "num": 100,
+            "calorie": 130,
+            "calorie_unit": "kcal",
+            "carbs_g": 28,
+            "protein_g": 2.7,
+            "fat_g": 0.3,
+            "unit": "g"
+        }))
+        .expect("food data");
+        assert_eq!(food.user_id, None);
+        assert!(!serde_json::to_value(&food).unwrap().as_object().unwrap().contains_key("user_id"));
+    }
+
+    #[test]
+    fn serde_preserves_custom_type_name_and_optional_request_values() {
+        let request: CreateGoalTemplateRequest = serde_json::from_value(serde_json::json!({
+            "name": "Cycle",
+            "type": "cycle",
+            "cycle_days": 7,
+            "today_index": 3,
+            "daily_goals": []
+        }))
+        .unwrap();
+        assert_eq!(request.template_type, "cycle");
+        assert_eq!(request.cycle_days, 7);
+        assert_eq!(request.today_index, 3);
+
+        let update: UpdateGoalTemplateRequest = serde_json::from_value(serde_json::json!({
+            "template_type": "daily",
+            "last_active_date": null
+        }))
+        .unwrap();
+        assert_eq!(update.template_type.as_deref(), Some("daily"));
+        assert!(update.last_active_date.is_none());
+    }
+
 }

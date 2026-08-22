@@ -1,1 +1,1 @@
-DROP TABLE IF EXISTS password_reset_codes;
+DROP TABLE IF EXISTS password_reset_codes CASCADE;

@@ -44,8 +44,10 @@ function AutoLogin() {
         if (parsed.state?.token) {
           login(parsed.state.token, parsed.state.user)
         }
-      } catch {
-        // ignore
+      } catch (error) {
+        // 持久化的登录态已损坏：移除后走正常登录流程，避免每次启动重复失败
+        console.error('Failed to restore persisted auth state:', error)
+        localStorage.removeItem('auth-storage')
       }
     }
   }, [isLoggedIn, login])

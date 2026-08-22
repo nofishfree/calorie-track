@@ -1,6 +1,6 @@
 import axios from 'axios'
-import dayjs from 'dayjs'
 import { useAuthStore, useGoalStore } from '../stores'
+import { foodPayload, goalTemplatePayload, planItemsPayload, recordPayload } from './payloads'
 import type { ServerResponse, ServerFood, ServerMealRecord, ServerGoalTemplate, ServerUserMe, VersionedSyncRequest, VersionedSyncResponse } from '../types'
 
 const api = axios.create({
@@ -146,85 +146,22 @@ export const syncAPI = {
         if (operation.operation_type === 'add') {
           return api.post('/api/foods', {
             id: food.id,
-            name: food.name,
-            num: food.num,
-            unit: food.unit,
-            calorie: food.calorie,
             calorie_unit: food.calorie_unit,
-            carbs_g: food.carbs_g,
-            protein_g: food.protein_g,
-            fat_g: food.fat_g,
+            ...foodPayload(food),
           })
         } else if (operation.operation_type === 'update') {
-          return api.put(`/api/foods/${dataId}`, {
-            name: food.name,
-            num: food.num,
-            calorie: food.calorie,
-            carbs_g: food.carbs_g,
-            protein_g: food.protein_g,
-            fat_g: food.fat_g,
-            unit: food.unit,
-          })
+          return api.put(`/api/foods/${dataId}`, foodPayload(food))
         } else {
           return api.delete(`/api/foods/${dataId}`)
         }
       }
       case 'record': {
         const record = operation.data as Record<string, unknown>
-        const foodData = record.food as Record<string, unknown> | undefined
-        const planItems = record.plan_items as Array<Record<string, unknown>> | undefined
-        
-        // 修复 record_time 格式：兼容旧数据（不带时区的本地时间字符串）
-        const fixRecordTime = (time: string | undefined): string => {
-          if (!time) return new Date().toISOString()
-          // 如果已经是 ISO 格式（带 Z 或时区偏移），直接返回
-          if (time.includes('Z') || time.includes('+') || time.includes('-')) {
-            return time
-          }
-          // 否则视为本地时间，转换为 UTC ISO 格式
-          return dayjs(time).toISOString()
-        }
-        
-        const record_time = fixRecordTime(record.record_time as string)
-        
+
         if (operation.operation_type === 'add') {
-          return api.post('/api/records', {
-            food_id: record.food_id || foodData?.id,
-            food: foodData,
-            serving_count: record.serving_count,
-            record_time,
-            calories_total: record.calories_total,
-            carbs_total: record.carbs_total,
-            protein_total: record.protein_total,
-            fat_total: record.fat_total,
-            plan_id: record.plan_id,
-            plan_name: record.plan_name,
-            plan_items: planItems?.map(item => ({
-              food_id: item.food_id,
-              food: item.food,
-              quantity: item.quantity,
-            })),
-            is_quick_add: record.is_quick_add,
-          })
+          return api.post('/api/records', recordPayload(record))
         } else if (operation.operation_type === 'update') {
-          return api.put(`/api/records/${dataId}`, {
-            food_id: record.food_id || foodData?.id,
-            food: foodData,
-            serving_count: record.serving_count,
-            record_time,
-            calories_total: record.calories_total,
-            carbs_total: record.carbs_total,
-            protein_total: record.protein_total,
-            fat_total: record.fat_total,
-            plan_id: record.plan_id,
-            plan_name: record.plan_name,
-            plan_items: planItems?.map(item => ({
-              food_id: item.food_id,
-              food: item.food,
-              quantity: item.quantity,
-            })),
-            is_quick_add: record.is_quick_add,
-          })
+          return api.put(`/api/records/${dataId}`, recordPayload(record))
         } else {
           return api.delete(`/api/records/${dataId}`)
         }
@@ -233,23 +170,9 @@ export const syncAPI = {
         const plan = operation.data as Record<string, unknown>
         const items = (plan.items as Array<Record<string, unknown>> | undefined) || []
         if (operation.operation_type === 'add') {
-          return api.post('/api/plans', {
-            name: plan.name,
-            items: items.map(item => ({
-              food_id: item.food_id,
-              food: item.food,
-              quantity: item.quantity,
-            })),
-          })
+          return api.post('/api/plans', { name: plan.name, items: planItemsPayload(items) })
         } else if (operation.operation_type === 'update') {
-          return api.put(`/api/plans/${dataId}`, {
-            name: plan.name,
-            items: items.map(item => ({
-              food_id: item.food_id,
-              food: item.food,
-              quantity: item.quantity,
-            })),
-          })
+          return api.put(`/api/plans/${dataId}`, { name: plan.name, items: planItemsPayload(items) })
         } else {
           return api.delete(`/api/plans/${dataId}`)
         }
@@ -257,39 +180,20 @@ export const syncAPI = {
       case 'goal': {
         const template = operation.data as Record<string, unknown>
         if (operation.operation_type === 'add') {
-          return api.post('/api/goal-templates', {
-            name: template.name,
-            type: template.type,
-            cycle_days: template.cycle_days,
-            today_index: template.today_index,
-            daily_goals: template.daily_goals,
-            last_active_date: template.last_active_date,
-          })
+          return api.post('/api/goal-templates', goalTemplatePayload(template))
         } else if (operation.operation_type === 'update') {
           // 尝试 PUT 更新；若 ID 非 UUID（400）或服务器上不存在（404），回退为 POST 创建
           try {
             return await api.put(`/api/goal-templates/${dataId}`, {
-              name: template.name,
-              type: template.type,
-              cycle_days: template.cycle_days,
-              today_index: template.today_index,
-              daily_goals: template.daily_goals,
+              ...goalTemplatePayload(template),
               is_current: template.is_current,
-              last_active_date: template.last_active_date,
             })
           } catch (error: any) {
             const status = error.response?.status
             if (status !== 404 && status !== 400) throw error
             // 400 = 路径参数 UUID 解析失败（旧版本地短 ID）；404 = 模板不存在
             // 统一回退为 POST 创建
-            const response: any = await api.post('/api/goal-templates', {
-              name: template.name,
-              type: template.type,
-              cycle_days: template.cycle_days,
-              today_index: template.today_index,
-              daily_goals: template.daily_goals,
-              last_active_date: template.last_active_date,
-            })
+            const response: any = await api.post('/api/goal-templates', goalTemplatePayload(template))
             // 用服务器返回的真实 UUID 更新本地状态
             const newId = response?.data?.id
             if (newId && newId !== dataId) {
@@ -360,6 +264,7 @@ export const initUserData = async (userId: string) => {
     // 2. 加载最近7天的记录
     const recordsByDate = useRecordStore.getState()
     const allRecords: any[] = []
+    const failedDates: string[] = []
 
     // 逐天获取记录（简单可靠）
     for (let i = 6; i >= 0; i--) {
@@ -379,6 +284,7 @@ export const initUserData = async (userId: string) => {
         recordsByDate.setRecordsForDate(date, mappedRecords)
       } catch (e) {
         console.error(`Failed to fetch records for ${date}:`, e)
+        failedDates.push(date)
       }
     }
 
@@ -400,7 +306,13 @@ export const initUserData = async (userId: string) => {
       useGoalStore.getState().syncTemplates(templates, currentTemplate.id)
     }
 
-    return { success: true, foods: mappedFoods, records: allRecords }
+    // 部分日期加载失败时也视为初始化不完整，调用方会提示用户
+    return {
+      success: failedDates.length === 0,
+      foods: mappedFoods,
+      records: allRecords,
+      failedDates,
+    }
   } catch (error) {
     console.error('Failed to initialize user data:', error)
     return { success: false, error }

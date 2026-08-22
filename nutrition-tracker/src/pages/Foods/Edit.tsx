@@ -4,6 +4,7 @@ import { NavBar, Button, Toast, Selector } from 'antd-mobile'
 import type { InputProps } from 'antd-mobile'
 import { useFoodStore, useAuthStore } from '../../stores'
 import type { Food } from '../../types'
+import { fromKcal, toKcal } from '../../utils/nutrition'
 import styles from './Create.module.css'
 
 interface FormField {
@@ -76,9 +77,7 @@ export default function EditFoodPage() {
         setFood(foundFood)
         // 如果热量单位是千焦，显示时将千卡转换回千焦
         const caloriesUnit = foundFood.calorie_unit || 'kcal'
-        const displayCalories = caloriesUnit === 'kj' 
-          ? foundFood.calorie * 4.184 
-          : foundFood.calorie
+        const displayCalories = fromKcal(foundFood.calorie, caloriesUnit)
         setForm({
           name: foundFood.name,
           quantity: String(foundFood.num),
@@ -140,8 +139,7 @@ export default function EditFoodPage() {
         return
       }
 
-      // 千焦转换为千卡：1 kcal = 4.184 kJ
-      const calories = form.caloriesUnit === 'kj' ? caloriesInput / 4.184 : caloriesInput
+      const calories = toKcal(caloriesInput, form.caloriesUnit)
 
       const updatedFood: Food = {
         ...food,

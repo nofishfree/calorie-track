@@ -114,6 +114,11 @@ export const useFoodStore = create<FoodState>()(
       
       deleteFood: (id) => {
         const food = get().foods.find(f => f.id === id)
+        if (!food) {
+          // 本地无此食物时不入队：服务端无法解析实体，操作会被静默丢弃
+          console.warn(`Skipped delete operation: no local food with id ${id}`)
+          return
+        }
         set((state) => ({
           foods: state.foods.filter((f) => f.id !== id),
         }))

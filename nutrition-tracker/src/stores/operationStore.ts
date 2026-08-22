@@ -20,6 +20,7 @@ export interface OperationItem {
 interface OperationState {
   queues: Record<string, OperationItem[]>
   isSyncing: boolean
+  lastSyncError: string | null
   pollingTimer: ReturnType<typeof setInterval> | null
   addOperation: (entity_type: EntityType, data: any, operation_type?: OperationType) => void
   deleteOperation: (entity_type: EntityType, data: any) => void
@@ -41,11 +42,51 @@ const hasUsableDataId = (data: unknown): data is Record<string, unknown> => {
   return typeof id === 'string' && id.length > 0
 }
 
+export const migrateOperationState = (persistedState: unknown): { queues: Record<string, OperationItem[]> } => {
+  if (!persistedState || typeof persistedState !== 'object') {
+    return { queues: {} }
+  }
+
+  const persistedQueues = (persistedState as { queues?: unknown }).queues
+  if (!persistedQueues || typeof persistedQueues !== 'object') {
+    return { queues: {} }
+  }
+
+  const queues: Record<string, OperationItem[]> = {}
+  for (const [userId, rawQueue] of Object.entries(persistedQueues)) {
+    if (!Array.isArray(rawQueue)) {
+      continue
+    }
+
+    queues[userId] = rawQueue.flatMap((rawOperation) => {
+      if (!rawOperation || typeof rawOperation !== 'object') {
+        return []
+      }
+
+      const operation = rawOperation as Record<string, unknown>
+      if (!hasUsableDataId(operation.data)) {
+        return []
+      }
+
+      return [{
+        ...operation,
+        id: typeof operation.id === 'string' && operation.id.length > 0
+          ? operation.id
+          : generateId(),
+        data: operation.data,
+      } as OperationItem]
+    })
+  }
+
+  return { queues }
+}
+
 export const useOperationStore = create<OperationState>()(
   persist(
     (set, get) => ({
       queues: {},
       isSyncing: false,
+      lastSyncError: null,
       pollingTimer: null,
 
       addOperation: (entity_type, data, operation_type = 'add') => {
@@ -187,7 +228,6 @@ export const useOperationStore = create<OperationState>()(
                 }
               : null
             const headOperationId = head?.id || null
-
             const response = await syncAPI.versionedSync({
               client_version: clientVersion,
               head_operation: headOperation,
@@ -211,22 +251,21 @@ export const useOperationStore = create<OperationState>()(
               get().removeOperation(targetUserId, headOperationId)
             }
 
-            if (response.server_version > clientVersion) {
-              clientVersion = response.server_version
-              useAuthStore.getState().updateDataVersion(response.server_version)
-            }
-
+            // 增量操作全部应用成功后，才推进本地数据版本
             if (response.operations && response.operations.length > 0) {
+              // 动态导入各 store（避免循环依赖）
               const { useFoodStore } = await import('./foodStore')
               const { useRecordStore } = await import('./recordStore')
               const { usePlanStore } = await import('./planStore')
               const { useGoalStore } = await import('./goalStore')
 
               for (const op of response.operations) {
+                // 如果是队头操作且已处理，跳过（避免重复应用，基于操作 ID 判断）
                 if (headOperationId && op.id === headOperationId && response.head_processed) {
                   continue
                 }
 
+                // 根据实体类型分发到对应的 store
                 const data = op.data as Record<string, unknown>
                 switch (op.entity_type) {
                   case 'food':
@@ -253,12 +292,29 @@ export const useOperationStore = create<OperationState>()(
               }
             }
 
-            if (!headOperation || (!response.head_processed && !response.head_rejected)) {
+            if (response.server_version > clientVersion) {
+              clientVersion = response.server_version
+              useAuthStore.getState().updateDataVersion(response.server_version)
+            }
+
+            if (
+              !headOperation
+              || (!response.head_processed && !response.head_rejected)
+              || (get().queues[targetUserId] || []).length === 0
+            ) {
               break
             }
           }
+
+          if (get().lastSyncError) {
+            set({ lastSyncError: null })
+          }
         } catch (error) {
+          // 保留数据版本与队列不变，下次轮询会重试；同时暴露错误供 UI 使用
           console.error('Versioned sync error:', error)
+          set({
+            lastSyncError: error instanceof Error ? error.message : String(error),
+          })
         } finally {
           set({ isSyncing: false })
         }
@@ -267,44 +323,7 @@ export const useOperationStore = create<OperationState>()(
     {
       name: 'operation-queue-storage',
       version: 2,
-      migrate: (persistedState) => {
-        if (!persistedState || typeof persistedState !== 'object') {
-          return { queues: {} }
-        }
-
-        const persistedQueues = (persistedState as { queues?: unknown }).queues
-        if (!persistedQueues || typeof persistedQueues !== 'object') {
-          return { queues: {} }
-        }
-
-        const queues: Record<string, OperationItem[]> = {}
-        for (const [userId, rawQueue] of Object.entries(persistedQueues)) {
-          if (!Array.isArray(rawQueue)) {
-            continue
-          }
-
-          queues[userId] = rawQueue.flatMap((rawOperation) => {
-            if (!rawOperation || typeof rawOperation !== 'object') {
-              return []
-            }
-
-            const operation = rawOperation as Record<string, unknown>
-            if (!hasUsableDataId(operation.data)) {
-              return []
-            }
-
-            return [{
-              ...operation,
-              id: typeof operation.id === 'string' && operation.id.length > 0
-                ? operation.id
-                : generateId(),
-              data: operation.data,
-            } as OperationItem]
-          })
-        }
-
-        return { queues }
-      },
+      migrate: migrateOperationState,
       partialize: (state) => ({
         // 只持久化队列数据，不持久化 timer 和同步状态
         queues: state.queues,
